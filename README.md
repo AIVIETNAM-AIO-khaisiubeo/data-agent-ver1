@@ -2,7 +2,6 @@
 
 **Zalo AI Challenge 2026** · Vietnamese business-question answering over CSV, Excel, and SQLite data
 
-DataMate Agent combines deterministic data processing with optional LLM-generated SQL/Python candidates. It executes and compares candidate results, estimates answer reliability, and decides whether to answer or abstain.
 
 ## Documentation guide
 
