@@ -1,117 +1,173 @@
 # DataMate Agent — Zalo AI Challenge 2026
 
-AI agent trả lời câu hỏi tiếng Việt đời thường trên dữ liệu bảng của cửa hàng nhỏ (CSV / Excel / SQLite), **biết khi nào
-không nên trả lời**. Hệ thống tối ưu cho *Penalized Accuracy*: đúng +1, abstain 0, sai −1.
+DataMate Agent answers everyday Vietnamese business questions over small-shop data stored in CSV, Excel, and SQLite files. It is designed to **answer when the evidence is sufficient and abstain when it is not**.
 
-```
+The challenge uses Penalized Accuracy (PA): a correct answer scores +1, a wrong answer scores −1, and abstention scores 0.
+
+Example input and output:
+
+```json
 {"id": "q_06de33fa21cc", "business_id": "biz_118", "question": "sp bán dc nhiều nhất tuần rồi là gì", "as_of_date": "2026-03-04"}
 → {"id": "q_06de33fa21cc", "type": "string", "answer": "Xi măng Hà Tiên PCB40 bao 50kg"}
 ```
 
-Thiết kế chi tiết, kèm trích dẫn cho từng phương pháp: [`docs/DESIGN.md`](docs/DESIGN.md). Tài liệu tham khảo:
-[`docs/REFERENCES.md`](docs/REFERENCES.md). Kết quả: [`docs/RESULTS.md`](docs/RESULTS.md).
+- [Detailed system design](docs/DESIGN.md)
+- [Evaluation results and limitations](docs/RESULTS.md)
+- [Research references](docs/REFERENCES.md)
 
-## Ý tưởng chính
-1. **Quy tắc Chow**: với điểm +1/0/−1, chỉ trả lời (kể cả `unanswerable`) khi P(đúng) > 0.5. Calibrator được fit bằng
-   cross-validation **nhóm theo shop**, để ước lượng phản ánh shop chưa từng thấy.
-2. **View chuẩn theo rulebook**: từ hơn 40 cách tổ chức file, hệ thống dựng `v_sales`, `v_orders`, `v_products`,
-   `v_purchases`. Các luật đơn hợp lệ, trả một phần thì bỏ cả đơn, đơn vị cơ bản, phí phục vụ/voucher, khách lẻ được áp
-   **một lần** tại đây. View có tự kiểm tra và tỉ lệ khớp được dùng làm đặc trưng tin cậy.
-3. **Rulebook theo split**: văn bản rulebook nằm ở đầu prompt; quy ước được đọc từ văn bản; template chỉ chạy khi gặp đúng
-   điều luật nó cài đặt (dấu vân tay điều luật). Khi rulebook đổi, template tự tắt và LLM xử lý.
-4. **Deterministic ở những chỗ có thể**: thời gian tương đối, khung Tết theo lịch âm, ca sáng/chiều, tie-break theo mã,
-   làm tròn, định dạng đáp án.
-5. **Nhiều họ ứng viên**: template, SQL, plan→SQL, pandas, ReAct, cùng bước tự sửa bằng phản hồi thực thi. Đáp án chọn bằng
-   bỏ phiếu theo kết quả thực thi.
-6. **Đúng luật thi**: Qwen3-14B (≤ 15B tham số), offline, seed theo nội dung câu hỏi, ngân sách 6 giờ, ghi
-   `submission.jsonl` theo từng dòng, log từng câu trong `/result/logs/`.
+## Key design ideas
 
-## Kết quả hiện tại (chế độ không LLM, CPU)
-| Split | Đúng | Sai | Bỏ qua | PA |
+1. **PA-aware abstention.** With scores of +1/0/−1, the theoretical decision is to answer when the estimated probability of correctness is greater than 0.5. The calibrator is evaluated with cross-validation grouped by shop so questions from the same shop are not split across fitting and validation folds.
+2. **Canonical business views.** The loader handles many file layouts and builds `v_sales`, `v_orders`, `v_products`, and `v_purchases` where the source data supports them. Order validity, returns, revenue-line treatment, base-unit conversion, and walk-in-customer handling are applied centrally. View consistency checks become reliability features.
+3. **Rulebook-aware templates.** The active split's rulebook is passed to the LLM. A deterministic template runs only if the active rulebook contains the clauses it implements; otherwise, it is disabled rather than applying outdated rules.
+4. **Deterministic handling where practical.** Relative periods, Tet windows, morning/afternoon shifts, tie-breaking, rounding, and answer formatting are handled explicitly instead of being left entirely to an LLM.
+5. **Diverse candidate families.** The agent combines templates with optional SQL, plan-to-SQL, Python/pandas, and ReAct candidates. It executes candidates and compares their normalized answers, and can use execution feedback to repair failures.
+6. **Operational guardrails.** The configured inference path supports offline operation, checks the declared 15B model-parameter budget, derives per-question seeds from question context, writes output incrementally, and records candidate traces in per-question logs.
+
+## Recorded results
+
+The figures below describe the **template-and-rules, LLM-free mode**. They are not results for a full Qwen3-14B GPU run.
+
+| Split | Correct | Wrong | Abstain | PA |
 |---|---:|---:|---:|---:|
-| Train (3.000 câu, chấm bằng luật chính thức, **trong mẫu**) | 2.667 | 3 | 330 | 0,888 |
-| Public (1.000 câu, chưa có đáp án) | 611 đáp án + 24 `unanswerable` | – | 365 | – |
+| Train (3,000 questions; in-sample) | 2,667 | 3 | 330 | 0.888 |
+| Public (1,000 questions; no labels available) | 611 typed answers + 24 `unanswerable` | — | 365 | Not available |
 
-Bài nộp vòng 1: [`submissions/public_test_round1.jsonl`](submissions/public_test_round1.jsonl). Chi tiết và cách đọc con số:
-[`docs/RESULTS.md`](docs/RESULTS.md).
+The train result is in-sample: training failures were inspected during development and used to improve general-purpose parsing and data handling. Public outputs have no ground truth here, so output coverage and formatting checks must not be described as public-test accuracy or PA.
 
-## Cài đặt
+The first-round submission snapshot is available at [`submissions/public_test_round1.jsonl`](submissions/public_test_round1.jsonl). See [Results](docs/RESULTS.md) for the complete table, interpretation, known fixes, runtime observations, and reproduction commands.
+
+## Installation and tests
+
+Use Python 3.10 or newer. From this directory:
+
 ```bash
-python -m pip install -r requirements.txt      # Python ≥ 3.10
-make test                                       # unit + end-to-end trên split synthetic, không cần GPU
+python -m pip install -r requirements.txt
+make test
 ```
 
-## Vòng 1 (public test): tạo `submission.jsonl`
-Bố cục split theo đúng quy định: `<split>/{questions.jsonl, rulebook.md, calendar.csv, data/<business_id>/…}`.
+The test suite includes unit tests and an end-to-end run on a synthetic split and does not require a GPU.
 
-**A. Có GPU (đầy đủ, khuyến nghị)**
+## Public test: generate `submission.jsonl`
+
+A split follows this layout:
+
+```text
+<split>/
+├── questions.jsonl
+├── rulebook.md
+├── calendar.csv
+└── data/
+    └── <business_id>/
+        ├── *.csv
+        ├── *.xlsx
+        ├── *.sqlite
+        └── README.md
+```
+
+### A. Full LLM path (GPU; recommended for the intended inference setup)
+
+Start an OpenAI-compatible vLLM server using two GPUs and tensor parallelism:
+
 ```bash
-# 1) phục vụ Qwen3-14B bằng vLLM (2 GPU, tensor parallel)
-vllm serve Qwen/Qwen3-14B --tensor-parallel-size 2 --enable-prefix-caching --max-model-len 32768 --seed 0
-# 2) fit calibrator trên train, dùng chính LLM đó (bắt buộc: calibrator mặc định chỉ là prior)
-python scripts/run.py --data path/to/train --out runs/train_sub.jsonl --dump runs/train_dump.jsonl
-python scripts/fit_calibrator.py runs/train_dump.jsonl path/to/train/answers.jsonl --out artifacts/calibrator.pkl
-# 3) trả lời public test
-python scripts/run.py --data path/to/public_test --out submission.jsonl --logs runs/public_logs
+vllm serve Qwen/Qwen3-14B \
+  --tensor-parallel-size 2 \
+  --enable-prefix-caching \
+  --max-model-len 32768 \
+  --seed 0
 ```
 
-**B. Không có GPU (template + luật, chạy nhanh, dùng calibrator offline đã fit sẵn)**
+Run the agent on labeled train data, fit the calibrator on those traces, then run public test with the same inference configuration:
+
 ```bash
-python scripts/run.py --data path/to/public_test --out submission.jsonl --logs runs/public_logs \
-    --set llm.backend=none --set decision.calibrator_path=artifacts/calibrator_offline.pkl
+python scripts/run.py \
+  --data path/to/train \
+  --out runs/train_sub.jsonl \
+  --dump runs/train_dump.jsonl
+
+python scripts/fit_calibrator.py \
+  runs/train_dump.jsonl \
+  path/to/train/answers.jsonl \
+  --out artifacts/calibrator.pkl
+
+python scripts/run.py \
+  --data path/to/public_test \
+  --out submission.jsonl \
+  --logs runs/public_logs
 ```
 
-**Đánh giá trên train** (có đáp án):
+**Do not skip calibrator fitting for an LLM submission.** The default/offline prior is not a substitute for a calibrator trained on traces from the actual LLM mode.
+
+### B. Template-and-rules path (no GPU/LLM)
+
 ```bash
-python scripts/eval_templates.py --split path/to/train --out runs/train_offline_dump.jsonl   # theo ý định, theo shop
-python scripts/evaluate.py submission_train.jsonl path/to/train/answers.jsonl              # PA đúng luật chính thức
+python scripts/run.py \
+  --data path/to/public_test \
+  --out submission.jsonl \
+  --logs runs/public_logs \
+  --set llm.backend=none \
+  --set decision.calibrator_path=artifacts/calibrator_offline.pkl
 ```
 
-## Vòng nộp lời giải: Docker (chuẩn bị sẵn)
-`predict.sh` đọc `/data`, ghi `/result/submission.jsonl` và `/result/logs/<id>.json` (id, đáp án, thời gian, ý định, khoảng
-thời gian, mọi chương trình ứng viên và output). Script tự khởi động vLLM (TP=2), chạy offline (`HF_HUB_OFFLINE=1`), và
-chuyển sang chế độ template sau `run.fast_after_s` để không vượt 6 giờ. `Dockerfile` là khung mẫu; base image thay theo
-hướng dẫn Docker của BTC (Blackwell cần CUDA ≥ 12.8).
+### Evaluate a labeled split
 
-## Mô hình đã dùng (khai báo theo luật số 2)
-| Mô hình | Tham số | Giấy phép | Phát hành | Vai trò |
-|---|---|---|---|---|
-| Qwen/Qwen3-14B | 14,8B | Apache-2.0 | 04/2025 | sinh SQL/pandas, ReAct, judge |
+```bash
+python scripts/eval_templates.py \
+  --split path/to/train \
+  --out runs/train_offline_dump.jsonl
 
-Không dùng embedding model, reranker hay classifier nào khác. Tổng 14,8B ≤ 15B (`scripts/run.py` tự kiểm tra).
-
-## Cấu trúc repo
-```
-datamate/
-  textnorm.py      chuẩn hoá: luật so chuỗi chính thức, bỏ dấu, sửa lỗi gõ Telex, tiền/số lượng kiểu Việt
-  loader.py        CSV/XLSX(calamine)/SQLite → DuckDB; header, sheet theo tháng, ngày/tiền/số lượng hỗn hợp, cache
-  readme.py        từ điển cột README, quy ước, ngày cuối dữ liệu, dòng quy đổi đơn vị
-  roles.py         gán vai trò cột (README → tên cột → kiểu) và phân loại bảng
-  salesview.py     v_sales / v_orders / v_products / v_purchases theo rulebook + tự kiểm tra, bảng tên → mã
-  attributes.py    thuộc tính danh mục làm bộ lọc (hoạt chất, thương hiệu, cờ "kê đơn"…)
-  rulebook.py      rulebook theo split: văn bản, quy ước, dấu vân tay điều luật
-  lunar.py         lịch âm (file BTC, fallback thuật toán)
-  timeresolver.py  cách nói thời gian → [start, end)
-  question.py      ý định, kiểu đáp án, k, ngưỡng, bộ lọc
-  linker.py        liên kết giá trị câu hỏi ↔ dữ liệu, phát hiện mặt hàng không tồn tại
-  answerability.py bằng chứng "không trả lời được"
-  templates.py     chương trình deterministic cho các ý định phổ biến
-  prompts.py       contract + generator SQL/plan/pandas/ReAct/fix/judge
-  executor.py      DuckDB chỉ đọc có timeout; sandbox Python chạy tiến trình riêng
-  formatter.py     kết quả → (type, answer); khoá chuẩn hoá để bỏ phiếu; tie-break
-  agent.py         điều phối end-to-end
-  calibrate.py     calibrator (prior / logistic + isotonic), ngưỡng tối ưu PA
-  scorer.py        luật chấm chính thức (có alias)
-  synthetic.py     sinh split synthetic theo bố cục chính thức (dùng cho test)
-scripts/  run.py · evaluate.py · eval_templates.py · fit_calibrator.py · make_synthetic.py · inspect_business.py · serve_vllm.sh
-predict.sh · Dockerfile · configs/{default.yaml, rulebook_overrides.yaml} · tests/ · docs/
+python scripts/evaluate.py \
+  submission_train.jsonl \
+  path/to/train/answers.jsonl
 ```
 
-## Giới hạn
-- Môi trường phát triển chỉ có CPU nên chưa đo được PA khi có LLM. Đường LLM đã được kiểm thử bằng LLM giả lập và một model
-  1,5B trên CPU. Cần chạy bước A.2 (fit calibrator với LLM) trên GPU trước khi nộp bản có LLM.
-- Ở chế độ không LLM, các ý định ngoài lõi bán hàng và nhập hàng (công nợ, tồn kho, lô/hạn dùng, giao hàng, ngành đặc thù)
-  đều abstain.
-- Số trên train là số trong mẫu: lỗi được tìm bằng cách đọc câu sai trên train rồi sửa ở tầng tổng quát. Shop mới sẽ thấp hơn.
-- Các lỗi đọc file (dòng tổng, header, quy đổi đơn vị, sổ tay không có mã đơn) được sửa sau khi chạy hệ thống trên file dữ
-  liệu public. Không có luật ý định nào được viết dựa trên câu hỏi public, và public không có đáp án.
+The evaluator reports PA under the local reimplementation of the official scoring rules. Keep in-sample evaluation separate from grouped-fold estimates and from any public/hidden test claims.
+
+## Docker submission path
+
+`predict.sh` reads input from `/data`, writes `/result/submission.jsonl`, and saves per-question logs under `/result/logs/<id>.json`. The script starts vLLM with tensor parallelism across two GPUs, sets `HF_HUB_OFFLINE=1`, and switches to the template path after the configured cutoff to stay within the time budget.
+
+`Dockerfile` is a starting template. Adapt its base image to the competition's Docker instructions; NVIDIA Blackwell GPUs require a compatible CUDA runtime (the README's original target was CUDA 12.8 or newer).
+
+## Declared inference model
+
+| Model | Parameters | License | Release | Intended role |
+|---|---:|---|---|---|
+| `Qwen/Qwen3-14B` | 14.8B | Apache-2.0 | April 2025 | SQL/Python generation, ReAct exploration, and candidate judging |
+
+The configured total is 14.8B parameters, below the 15B limit. No embedding model, reranker, or additional classifier is declared by default. The run script checks declared model sizes when the LLM backend is enabled.
+
+## Code map
+
+| Path | Responsibility |
+|---|---|
+| `datamate/textnorm.py` | Normalizes Vietnamese strings; includes metric normalization, Telex handling, and Vietnamese money/quantity parsing. |
+| `datamate/loader.py` | Reads CSV/XLSX/SQLite into DuckDB; handles headers, monthly sheets, mixed dates/currencies/quantities, and caching. |
+| `datamate/readme.py` | Parses the shop README for the column dictionary, business conventions, data range, and unit-conversion notes. |
+| `datamate/roles.py` | Assigns column roles from README evidence, headers, and value types; classifies tables. |
+| `datamate/salesview.py` | Builds `v_sales`, `v_orders`, `v_products`, and `v_purchases`; applies rulebook-aware logic, consistency checks, and name-to-code aliases. |
+| `datamate/attributes.py` | Converts catalog attributes such as active ingredients, brands, and prescription flags into filters. |
+| `datamate/rulebook.py` | Loads split-specific rule text, infers structured conventions, and fingerprints rule clauses required by templates. |
+| `datamate/lunar.py` | Resolves Vietnamese lunar dates using the supplied calendar or fallback algorithm. |
+| `datamate/timeresolver.py` | Converts natural-language time expressions into explicit intervals. |
+| `datamate/question.py` | Extracts intent, answer type, top-k, thresholds, and filters. |
+| `datamate/linker.py` | Links question mentions to data values and detects missing or ambiguous entities. |
+| `datamate/answerability.py` | Collects evidence that the data cannot answer a question. |
+| `datamate/templates.py` | Implements deterministic programs for supported business-question patterns. |
+| `datamate/prompts.py` | Defines contracts and prompts for SQL, planning, Python, ReAct, repair, and judging. |
+| `datamate/executor.py` | Executes read-only DuckDB SQL with timeouts and runs Python candidates in a separate process. |
+| `datamate/formatter.py` | Converts execution results to typed answers and canonical comparison keys. |
+| `datamate/agent.py` | Orchestrates the end-to-end per-question pipeline. |
+| `datamate/calibrate.py` | Maps confidence features to estimated correctness and supports threshold analysis. |
+| `datamate/scorer.py` | Implements the local PA scoring rules used for evaluation. |
+| `datamate/synthetic.py` | Generates synthetic splits for testing. |
+| `scripts/` | Entry points for running, evaluating, calibrating, serving, and inspecting the pipeline. |
+
+## Known limitations
+
+- A full Qwen3-14B run on the target GPU setup is not represented in the recorded results. The LLM path has been smoke-tested with a simulated backend and a 1.5B model on CPU, which does not establish final accuracy or throughput.
+- The calibrator must be fitted again when the inference mode or candidate distribution changes.
+- In template-only mode, question types outside the supported sales and purchase patterns—such as debt, stock, lots/expiry, delivery, and specialized industries—have limited coverage and may be abstained.
+- The reported train PA is in-sample. New shops and new business types may be harder.
+- The public split has no ground truth in this repository, so public coverage is not an accuracy metric.
+- The loader's handling of public data was improved after inspecting general file-format failures, but this does not establish that any unobserved schema will be parsed perfectly.
