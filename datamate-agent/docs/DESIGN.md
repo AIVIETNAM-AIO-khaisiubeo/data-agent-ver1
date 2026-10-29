@@ -51,18 +51,18 @@ The design uses research as guidance rather than as a claim of equivalent benchm
 
 Penalized Accuracy (PA) assigns **+1** to a correct answer, **−1** to an incorrect answer, and **0** to abstention. Let $p=P(\text{correct}\mid x)$ be the estimated probability that a candidate answer is correct.
 
-$$$$
+$$
 \begin{aligned}
 \mathbb{E}[S\mid\text{answer}] &= p(+1)+(1-p)(-1)=2p-1,\\
 \mathbb{E}[S\mid\text{abstain}] &= 0.
 \end{aligned}
-$$$$
+$$
 
 Therefore, the basic PA-optimal reject rule is:
 
-$$$$
+$$
 \boxed{\text{Answer if }p>0.5;\quad\text{otherwise abstain.}}
-$$$$
+$$
 
 This is the reject-option decision described by Chow [R27] and is closely related to selective classification [R28]. An `unanswerable` response is still an answer and is subject to the same rule. It should only be selected when the evidence supports it.
 
