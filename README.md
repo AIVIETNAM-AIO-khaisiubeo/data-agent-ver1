@@ -5,9 +5,8 @@ DataMate Agent answers Vietnamese business questions over shop data stored in **
 
 > **Start here:** the implementation lives in [`datamate-agent/`](datamate-agent/). This top-level README is the project overview; the implementation-specific setup and commands are documented in [`datamate-agent/README.md`](datamate-agent/README.md).
 
----
 
-## At a glance
+## Regulations 
 
 - **Input:** a business question, shop data, a rulebook, and optional calendar data.
 - **Data layer:** normalize heterogeneous files and build DuckDB tables and semantic views.
