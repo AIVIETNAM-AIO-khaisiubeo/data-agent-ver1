@@ -24,9 +24,9 @@
 
 Penalized Accuracy (PA) assigns +1 to a correct answer, −1 to an incorrect answer, and 0 to abstention. For N labeled questions:
 
-$$$$
+$$
 \mathrm{PA}=\frac{N_{\mathrm{correct}}-N_{\mathrm{wrong}}}{N}
-$$$$
+$$
 
 Consequently, abstentions remain in the denominator. Returning fewer answers can be beneficial when it prevents sufficiently risky guesses, but excessive abstention also limits PA.
 
