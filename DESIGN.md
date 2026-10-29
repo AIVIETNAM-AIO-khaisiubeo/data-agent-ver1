@@ -91,13 +91,9 @@ An unsupported answer should not be replaced with a plausible-looking guess. The
 
 ## 5. Answer-versus-abstain policy
 
-Under Penalized Accuracy, a correct answer scores (+1), a wrong answer scores (-1), and abstention scores (0). Let (p) be the estimated probability that a proposed answer is correct.
+Under Penalized Accuracy, a correct answer scores +1, a wrong answer scores −1, and abstention scores 0. Let $p$ be the estimated probability that a proposed answer is correct.
 
-[
-mathbb{E}[S \mid \text{answer}] = p(+1) + (1-p)(-1) = 2p - 1
-]
-
-Because abstention has expected score (0), the basic decision rule is to answer when (p > 0.5). The same logic applies to an `unanswerable` response: it is a scored answer and must be correct. The configured thresholds and calibration quality still matter; a probability estimate should not be treated as trustworthy merely because it is numeric.
+The expected score of answering is $E[S \mid \text{answer}] = p(+1) + (1-p)(-1) = 2p - 1$. Because abstention has expected score 0, the basic decision rule is to answer when $p > 0.5$. The same logic applies to an `unanswerable` response: it is a scored answer and must be correct. The configured thresholds and calibration quality still matter; a probability estimate should not be treated as trustworthy merely because it is numeric.
 
 ## 6. Runtime and reproducibility
 
