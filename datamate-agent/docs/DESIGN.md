@@ -49,24 +49,24 @@ The design uses research as guidance rather than as a claim of equivalent benchm
 
 ## 2. Decision policy under Penalized Accuracy
 
-Penalized Accuracy (PA) assigns **+1** to a correct answer, **−1** to an incorrect answer, and **0** to abstention. Let (p=P(\text{correct}\mid x)) be the estimated probability that a candidate answer is correct.
+Penalized Accuracy (PA) assigns **+1** to a correct answer, **−1** to an incorrect answer, and **0** to abstention. Let $p=P(\text{correct}\mid x)$ be the estimated probability that a candidate answer is correct.
 
-[
+$
 \begin{aligned}
 \mathbb{E}[S\mid\text{answer}] &= p(+1)+(1-p)(-1)=2p-1,\\
 \mathbb{E}[S\mid\text{abstain}] &= 0.
 \end{aligned}
-]
+$
 
 Therefore, the basic PA-optimal reject rule is:
 
-[
+$
 \boxed{\text{Answer if }p>0.5;\quad\text{otherwise abstain.}}
-]
+$
 
 This is the reject-option decision described by Chow [R27] and is closely related to selective classification [R28]. An `unanswerable` response is still an answer and is subject to the same rule. It should only be selected when the evidence supports it.
 
-The practical challenge is to estimate (p) reliably. Candidate agreement, cross-family agreement, execution failures, empty results, rule-based answerability evidence, unresolved links, and semantic-view self-checks feed the confidence model. Calibration quality depends on using representative labeled examples and avoiding leakage across shops.
+The practical challenge is to estimate $p$ reliably. Candidate agreement, cross-family agreement, execution failures, empty results, rule-based answerability evidence, unresolved links, and semantic-view self-checks feed the confidence model. Calibration quality depends on using representative labeled examples and avoiding leakage across shops.
 
 ## 3. End-to-end architecture
 
@@ -177,7 +177,7 @@ For example, if a split removes the rule for average purchase price, the corresp
 
 The LLM is not expected to calculate dates from prose. The resolver converts time expressions into explicit half-open intervals `[start, end)` and passes the resolved context to candidate generation.
 
-Supported patterns include yesterday, the last (N) days (including today where required), this/last week, month-to-date, a month without a year, quarters, inclusive start/end periods, a selected set of months, an (N)-day interval compared with the immediately preceding interval, the same period last year, Tet-related windows, morning/afternoon shifts, and snapshots through a specified date.
+Supported patterns include yesterday, the last $N$ days (including today where required), this/last week, month-to-date, a month without a year, quarters, inclusive start/end periods, a selected set of months, an $N$-day interval compared with the immediately preceding interval, the same period last year, Tet-related windows, morning/afternoon shifts, and snapshots through a specified date.
 
 The active challenge calendar file takes precedence for solar–lunar dates. The fallback uses the Vietnamese lunar-calendar algorithm associated with Hồ Ngọc Đức [R37], informed by astronomical calculations such as Meeus [R38]. The project notes tests for Tet dates from 2023–2027 and the 2025 leap month.
 
@@ -185,7 +185,7 @@ The active challenge calendar file takes precedence for solar–lunar dates. The
 
 **Implementation:** `datamate/textnorm.py`, `question.py`, `linker.py`, `attributes.py`
 
-Question analysis uses deterministic rules before candidate generation. It extracts the likely intent, expected answer type, top-(k), thresholds such as “at least (X)” or “above (X)”, time periods, and filters such as product group, customer group, payment method, sales channel, shift, or size. The intent vocabulary has roughly 30 categories.
+Question analysis uses deterministic rules before candidate generation. It extracts the likely intent, expected answer type, top-$k$, thresholds such as “at least (X)” or “above (X)”, time periods, and filters such as product group, customer group, payment method, sales channel, shift, or size. The intent vocabulary has roughly 30 categories.
 
 Value linking maps question mentions to values found in the shop data. Instead of relying on an approximate schema-wide retrieval step, the linker compares question spans with distinct data values using normalized matching and `rapidfuzz`, checks aliases, and flags ambiguous matches [R25].
 
