@@ -205,7 +205,7 @@ def analyze(question: str) -> QSpec:
     elif has(r"nhan vien|thu ngan|nguoi ban\b") and has(r"nhat|gioi"):
         s.intent, s.entity, s.metric = "top_staff", "staff", "revenue"
         s.answer_type = "list" if (s.k or 1) > 1 else "string"
-    elif has(r"ban chay|ban nhieu nhat|ban duoc nhieu nhat|hot nhat|ban it nhat|ban cham|ban e\b|it duoc mua|nhieu tien nhat|doanh thu cao nhat|ban nhieu nhat") \
+    elif has(r"chay nhat|ban chay|ban nhieu nhat|ban duoc nhieu nhat|hot nhat|ban it nhat|ban cham|ban e\b|it duoc mua|nhieu tien nhat|doanh thu cao nhat|ban nhieu nhat") \
             and has(r"mat hang|san pham|mon|hang|thuoc|gi|nao|top|loai|do uong|nuoc") and not purchase \
             and not has(r"ngay nao|thang nao|khach|nhan vien|nhom nao|khong ban duoc|lan nao|bao nhieu$|la bao nhieu"):
         s.intent, s.entity = "top_items", "item"
