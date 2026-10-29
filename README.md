@@ -1,5 +1,5 @@
 # DataMate Agent
-### Zalo AI Challenge 2026 · Natural-language analytics for small-business data
+### Zalo AI Challenge 2026
 
 DataMate Agent answers Vietnamese business questions over shop data stored in **CSV, Excel, and SQLite**. It combines deterministic data processing with LLM-generated SQL/Python candidates, then checks candidate results and decides whether to answer or abstain.
 
@@ -42,7 +42,6 @@ flowchart TD
     N --> O
 ```
 
-The LLM is **one part of the pipeline**, not the source of truth for every calculation. Deterministic templates handle supported patterns; execution and validation help catch invalid candidates; the decision layer can abstain instead of returning a low-confidence answer.
 
 ## Repository map
 
