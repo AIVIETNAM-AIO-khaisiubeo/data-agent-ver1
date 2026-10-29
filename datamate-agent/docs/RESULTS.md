@@ -1,4 +1,4 @@
-# Evaluation Results — Round 1 (Template-Only Mode)
+# Evaluation Results — Round 1 
 
 > **Evaluation status:** The results below are from the deterministic template-and-rules path (`llm.backend=none`) in a development environment with a two-core CPU. They are not results for a full Qwen3-14B GPU run. The full LLM path requires its own evaluation and a calibrator fitted to traces from that same inference configuration.
 >
