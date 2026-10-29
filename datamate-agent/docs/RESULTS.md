@@ -1,68 +1,150 @@
-# Kết quả — vòng 1 (chế độ không LLM)
+# Evaluation Results — Round 1 (Template-Only Mode)
 
-Môi trường phát triển chỉ có CPU 2 nhân, nên mọi con số dưới đây là của **chế độ template + luật** (`llm.backend=none`).
-Đây cũng là chế độ dự phòng khi hết giờ trong bản nộp có LLM. Chế độ có Qwen3-14B cần chạy trên GPU (README, mục A).
+> **Evaluation status:** The results below are from the deterministic template-and-rules path (`llm.backend=none`) in a development environment with a two-core CPU. They are not results for a full Qwen3-14B GPU run. The full LLM path requires its own evaluation and a calibrator fitted to traces from that same inference configuration.
 
-## 1. Train (3.000 câu, 30 shop) — chấm bằng luật chính thức (`scripts/evaluate.py`)
+## At a glance
 
-| Phiên bản | Đúng | Sai | Bỏ qua | PA |
+| Evaluation | Questions | Output summary | PA status |
+|---|---:|---|---|
+| Train | 3,000 across 30 shops | 2,667 correct, 3 wrong, 330 abstentions in the recorded final run | **0.888, in-sample** |
+| Public test | 1,000 across 14 shops | 611 typed answers, 24 `unanswerable` outputs, 365 abstentions | **Not available** — ground truth is not present |
+
+## Contents
+
+1. [Metric and evaluation setup](#1-metric-and-evaluation-setup)
+2. [Training-split results](#2-training-split-results)
+3. [Public-test output](#3-public-test-output)
+4. [General-purpose fixes from error analysis](#4-general-purpose-fixes-from-error-analysis)
+5. [Reproduction commands](#5-reproduction-commands)
+6. [Interpretation and limitations](#6-interpretation-and-limitations)
+
+---
+
+## 1. Metric and evaluation setup
+
+Penalized Accuracy (PA) assigns +1 to a correct answer, −1 to an incorrect answer, and 0 to abstention. For N labeled questions:
+
+$$
+\mathrm{PA}=\frac{N_{\mathrm{correct}}-N_{\mathrm{wrong}}}{N}
+$$
+
+Consequently, abstentions remain in the denominator. Returning fewer answers can be beneficial when it prevents sufficiently risky guesses, but excessive abstention also limits PA.
+
+The recorded train scores were computed with the local scoring implementation in `scripts/evaluate.py`, which follows the challenge scoring behavior for answer types, numeric rounding, accepted string forms, dates, booleans, lists, tables, and `unanswerable`.
+
+## 2. Training-split results
+
+**Split:** 3,000 questions across 30 shops. The figures below are historical snapshots of the template-and-rules system as general-purpose data-handling and question-understanding fixes were added.
+
+| Version | Correct | Wrong | Abstain | PA |
 |---|---:|---:|---:|---:|
-| v2 — trước vòng sửa lỗi này | 1.988 | 315 | 697 | 0,558 |
-| v3 — phân loại bảng theo tên sheet, bỏ dòng tổng đúng cách, lọc kênh/thanh toán, thuộc tính danh mục | 2.473 | 73 | 454 | 0,800 |
-| v5 — quy đổi đơn vị theo chuỗi, linker theo dấu, chặn ràng buộc chưa xử lý, Tết theo lần nhắc đầu | 2.526 | 13 | 461 | 0,838 |
-| **v6 — nhóm hàng/nhóm khách, bảng tên → mã, hạng khách** | **2.666** | **5** | **329** | **0,887** |
-| v6 qua `run.py` + calibrator, chấm bằng `evaluate.py` | 2.667 | 3 | 330 | **0,888** |
+| v2 — before this error-analysis round | 1,988 | 315 | 697 | 0.558 |
+| v3 — sheet-aware table classification, total-row cleanup, channel/payment filters, catalog attributes | 2,473 | 73 | 454 | 0.800 |
+| v5 — chained unit conversion, accent-aware linking, unresolved-constraint guard, first-mentioned Tet year | 2,526 | 13 | 461 | 0.838 |
+| v6 — product/customer groups, name-to-code lookup, customer tier | 2,666 | 5 | 329 | 0.887 |
+| **v6 through `run.py` with the offline calibrator** | **2,667** | **3** | **330** | **0.888** |
 
-**Cần đọc con số này đúng cách.** Đây là số *trong mẫu*: các lỗi được tìm bằng cách đọc câu sai trên train rồi sửa ở
-tầng tổng quát (loader, vai trò cột, linker, bộ phân tích câu hỏi). Không có logic nào gắn với id câu hỏi hay id shop, nhưng
-train vẫn là dữ liệu đã nhìn thấy. Trên shop mới, kỳ vọng thấp hơn. Hai tín hiệu cho thấy mức tổng quát hoá:
+The final row's PA is $\mathrm{PA}=(2,667-3)/3,000=0.888$. It corresponds to 89.0% non-abstention coverage and approximately 99.9% accuracy among the answers emitted in that recorded run.
 
-* Lỗi được sửa đều thuộc loại chung (xem mục 3), và mỗi lần sửa làm tăng số câu đúng ở nhiều shop cùng lúc.
-* Trên public (shop khác, rulebook khác), hệ thống tự trả lời 63.5% số câu (mục 2), so với 89% trên
-  train. Khoảng cách chủ yếu nằm ở các shop ngành mới (sửa xe, điện thoại, cơ sở dữ liệu nhiều bảng), nơi nhiều câu hỏi nằm
-  ngoài các ý định mà template cài đặt.
+### How to interpret this result
 
-Calibrator được fit với **cross-validation nhóm theo shop** (`scripts/fit_calibrator.py`). Trên train, độ chính xác của ứng
-viên template là 0,998, nên calibrator gần như luôn trả lời khi template có ứng viên. Khi bật LLM, phải fit lại calibrator
-trên một lần chạy có LLM, vì phân phối lỗi sẽ khác hẳn.
+This is an **in-sample** training result. Failures were examined on the training split and used to improve general-purpose components, including the loader, table/column-role inference, linker, and question analyzer. The fixes were not keyed to individual question IDs or business IDs, but the train examples had still been observed during development. Therefore, 0.888 should not be presented as a held-out estimate for unseen shops.
 
-## 2. Public test (1.000 câu, 14 shop, chưa có đáp án)
+The calibrator workflow in `scripts/fit_calibrator.py` uses grouped folds by business for its out-of-fold diagnostic: questions from the same shop stay in the same fold. It then fits the final deployable calibrator on all labeled candidate examples. The recorded final row above should be read as a training-run result, not as a reported private-test or held-out PA.
 
-`runs/public_submission.jsonl`, chạy trong khoảng 6 phút 40 giây (lần chạy có cache: 4 phút 10 giây) trên CPU (gồm nạp dữ liệu và dựng view, chưa có cache):
+The candidate accuracy in the recorded train diagnostics was about 0.998. That high value is consistent with the in-sample error-analysis process and should not be assumed to hold on new shops. When LLM inference is enabled, fit a fresh calibrator on labeled traces generated by that same LLM configuration.
 
-| Kết quả | Số câu |
-|---|---:|
-| Có đáp án (number, percent, date, string, list, boolean) | 611 |
-| `unanswerable` (có bằng chứng dương) | 24 |
-| `abstain` | 365 |
+## 3. Public-test output
 
-Nguyên nhân abstain: khoảng 235 câu không thuộc ý định nào template cài (công nợ, tồn kho, lô/hạn dùng, ngành sửa xe, điện
-thoại, mẹ & bé…), đây là phần LLM xử lý. Khoảng 130 câu có ý định nhưng template tự rút lui (bộ lọc chưa hiểu, thực thể nhập
-nhằng, kỳ ngoài dữ liệu một phần…). Định dạng đã được kiểm tra: đủ 1.000 dòng theo đúng thứ tự, `abstain` chỉ có `id`, `type`,
-`reason` của `unanswerable` là chuỗi; mỗi câu có log ở `runs/public_logs/<id>.json`.
+**Split:** 1,000 questions across 14 shops; no ground-truth answers are included here. The run artifact was `runs/public_submission.jsonl`, with logs under `runs/public_logs/<id>.json`.
 
-## 3. Các lỗi tổng quát đã sửa trong vòng này (tìm trên train)
+| Output category | Questions | Share of public split |
+|---|---:|---:|
+| Typed answer (`number`, `percent`, `date`, `string`, `list`, or `boolean`) | 611 | 61.1% |
+| `unanswerable` with positive evidence | 24 | 2.4% |
+| `abstain` | 365 | 36.5% |
+| **Any non-abstaining output** | **635** | **63.5%** |
 
-| Lỗi | Hậu quả | Cách sửa (tổng quát) |
+The run took approximately **6 minutes 40 seconds without a warm cache** and **4 minutes 10 seconds with a cache** on the development CPU. These are observed runtimes for this run, not a throughput guarantee for other machines or data layouts.
+
+Approximate abstention breakdown from the recorded run:
+
+- About 235 questions did not match a deterministic template, including debt, stock, lots/expiry, delivery, and industry-specific questions such as vehicle repair, mobile phones, and mother-and-baby shops.
+- About 130 questions matched a supported intent but caused the template to withdraw because a filter was unresolved, an entity link was ambiguous, or the requested period did not permit a safe answer under the applicable rules.
+
+### Output validation recorded for this run
+
+- The file contained 1,000 records in the input question order.
+- Abstentions used the required `id` and `type` fields.
+- The `reason` field for `unanswerable` was a string.
+- A per-question log was written for each question.
+
+**Important:** because public ground truth is not available, these checks establish output coverage and format—not public-test accuracy or PA.
+
+## 4. General-purpose fixes from error analysis
+
+The table below summarizes recurring data and interpretation failures found during train review. The fixes were made at a general system layer rather than for a particular question ID.
+
+| Failure mode | Effect | General fix |
 |---|---|---|
-| Khách tên "Tống …" bị coi là dòng "Tổng" | mất đơn thật, doanh thu thấp ở nhiều shop | nhãn dòng tổng phải là ô chữ đầu tiên của dòng |
-| Dòng "Cộng ngày 01/01" nằm ở cột thứ 10, ô `NaT` bị coi là chữ | dòng tổng lọt vào dữ liệu | duyệt mọi cột, coi `NaT` là ô trống |
-| Tên file chung cho mọi sheet ("DuLieuBanHang") | mọi bảng bị coi là bảng bán hàng | phân loại theo tên sheet trước, tên file sau |
-| Bảng quy đổi có cột "Đơn vị quy đổi" không được nhận | không quy đổi đơn vị, "bán chạy" sai | luật vai trò `big_unit`; hệ số dạng "15 vỉ" nhân chuỗi |
-| Câu hỏi về hoạt chất / thuốc kê đơn trả doanh thu cả shop | sai hàng loạt ở nhà thuốc | module `attributes.py` + chặn ràng buộc chưa xử lý |
-| "trả bằng chuyển khoản" liên kết với món "Trà" | doanh thu = 0 | dấu thanh là bằng chứng khi liên kết |
-| "Acyclovir" bị sửa Telex thành "acyclovi", "họng" thành "không" | sai ý định | chỉ sửa Telex khi ra âm tiết hợp lệ; viết tắt chỉ bung khi gõ không dấu |
-| "Tết năm nay so với Tết năm ngoái" lấy nhầm năm | `unanswerable` sai | năm theo lần nhắc Tết đầu tiên |
-| "hạng" (thân thiết/sỉ) của khách bị hiểu là "hàng" | không lọc được nhóm khách | vai trò cột theo loại bảng |
-| "nhân viên Bùi Dũng Lan" trong khi đơn ghi `NV003` | doanh thu cả shop | bảng tên → mã từ danh sách nhân viên/khách |
+| A customer named “Tống …” was mistaken for a total row labeled “Tổng”. | Real orders were dropped, lowering revenue across several shops. | Identify a total-row label from the first textual cell of a row, not arbitrary text later in the row. |
+| A “Cộng ngày 01/01” summary appeared in a late column, while a `NaT` cell was treated as text. | Total rows remained in the data. | Inspect every column for summary labels and normalize `NaT` as empty. |
+| Multiple sheets shared a generic filename such as `DuLieuBanHang`. | Different tables were incorrectly classified as sales tables. | Use the sheet/table name before the file name when inferring table type. |
+| A conversion table used a “Đơn vị quy đổi” column that was not recognized. | Quantities were not converted to base units; “best-selling” rankings could be wrong. | Add the `big_unit` role and multiply chained conversion factors such as “15 strips”. |
+| A question about an active ingredient or prescription status returned shop-wide revenue. | The requested catalog constraint was omitted. | Add `attributes.py` filters and make templates withdraw when a stated constraint cannot be resolved. |
+| “Pay by bank transfer” linked to a product named “Trà”. | A product filter incorrectly eliminated the intended result. | Use Vietnamese diacritics as evidence during value linking. |
+| “Acyclovir” was altered by Telex correction, or “họng” was expanded to “không”. | The query meaning changed before intent parsing. | Apply Telex correction only when it yields a valid Vietnamese syllable; expand ambiguous abbreviations only for unaccented input. |
+| “Tet this year versus Tet last year” used the wrong year. | The time range or answerability decision was wrong. | Resolve the year from the first Tet mention in the question. |
+| Customer tier (“hạng”, such as loyal/wholesale) was interpreted as “hàng” (product). | The customer-group filter was missed. | Use the classified table type when assigning column roles. |
+| The question named staff member “Bùi Dũng Lan”, but orders stored code `NV003`. | The name filter failed and could return shop-wide revenue. | Build a name-to-code alias table from staff/customer directories. |
 
-## 4. Cách tái lập
+## 5. Reproduction commands
+
+Run the commands from the `datamate-agent/` directory. Replace the paths with the actual challenge split locations.
+
+### 5.1 Evaluate template candidates on train
 
 ```bash
-python scripts/eval_templates.py --split path/to/train --out runs/train_offline_dump.jsonl   # bảng mục 1
-python scripts/fit_calibrator.py runs/train_offline_dump.jsonl path/to/train/answers.jsonl \
-       --out artifacts/calibrator_offline.pkl
-python scripts/run.py --data path/to/public_test --out runs/public_submission.jsonl --logs runs/public_logs \
-       --set llm.backend=none --set decision.calibrator_path=artifacts/calibrator_offline.pkl
+python scripts/eval_templates.py \
+  --split path/to/train \
+  --out runs/train_offline_dump.jsonl
 ```
-Kết quả tất định: seed lấy từ nội dung câu hỏi, không dùng thời gian hay thứ tự chạy.
+
+### 5.2 Fit the offline calibrator
+
+```bash
+python scripts/fit_calibrator.py \
+  runs/train_offline_dump.jsonl \
+  path/to/train/answers.jsonl \
+  --out artifacts/calibrator_offline.pkl
+```
+
+### 5.3 Generate public-test output without an LLM
+
+```bash
+python scripts/run.py \
+  --data path/to/public_test \
+  --out runs/public_submission.jsonl \
+  --logs runs/public_logs \
+  --set llm.backend=none \
+  --set decision.calibrator_path=artifacts/calibrator_offline.pkl
+```
+
+The per-question seed is derived from question text, the as-of date, and candidate family; it is not derived from wall-clock time or input order.
+
+## 6. Interpretation and limitations
+
+### What these measurements support
+
+- The deterministic pipeline can ingest the recorded heterogeneous files and produce a correctly shaped submission for the public split.
+- General fixes to total-row detection, sheet classification, unit conversion, entity linking, query normalization, and unresolved constraints materially improved the recorded train result.
+- The template-only path is fast enough to serve as a low-compute baseline and as a fallback near the runtime limit.
+
+### What they do not support
+
+- They do not establish generalization to unseen shops: the final train PA is in-sample.
+- They do not establish public-test PA: public ground truth is unavailable in this repository.
+- They do not establish the accuracy or latency of the full Qwen3-14B path: a full target-GPU run is not included in these results.
+- They do not establish that the offline calibrator is valid for LLM-generated candidates. The calibrator must be re-fit on traces from the actual inference mode.
+
+For a reproducible report, record the split and checksum, model and serving configuration, configuration overrides, random seed policy, runtime, submission, and per-question logs. Keep template-only, simulated-LLM, and real-LLM results clearly separated.

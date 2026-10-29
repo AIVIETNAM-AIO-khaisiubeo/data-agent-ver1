@@ -1,161 +1,119 @@
-# DataMate Agent — thiết kế, cơ sở khoa học và kết quả
+# DataMate Agent — System Design Overview
 
-Tài liệu giải thích **mỗi thành phần lấy ý tưởng từ bài báo nào, lấy gì, bỏ gì và vì sao**, bám đề bài
-*Zalo AI Challenge 2026 – DataMate*, luật chấm *Penalized Accuracy (PA)*, quy định dữ liệu (rulebook theo từng split,
-business type mới ở private test) và ràng buộc kỹ thuật (≤ 15B tham số, offline, 6 giờ trên 2×RTX 5090, tái lập ±0.03 PA,
-log từng câu). Tài liệu tham khảo: [`REFERENCES.md`](REFERENCES.md) (mã `[R#]`).
+> **Purpose.** This document gives a concise, implementation-oriented overview of DataMate Agent. For the full module-by-module rationale and research context, see [the detailed design document](datamate-agent/docs/DESIGN.md). The evaluation record is maintained in [Results](datamate-agent/docs/RESULTS.md), and paper citations are listed in [References](datamate-agent/docs/REFERENCES.md).
+
+## Contents
+
+- [1. Scope and operating constraints](#1-scope-and-operating-constraints)
+- [2. End-to-end architecture](#2-end-to-end-architecture)
+- [3. Pipeline stages](#3-pipeline-stages)
+- [4. Key design decisions](#4-key-design-decisions)
+- [5. Answer-versus-abstain policy](#5-answer-versus-abstain-policy)
+- [6. Runtime and reproducibility](#6-runtime-and-reproducibility)
+- [7. Evidence and limitations](#7-evidence-and-limitations)
+- [8. Further reading](#8-further-reading)
 
 ---
 
-## 1. Dữ liệu thật nói gì
+## 1. Scope and operating constraints
 
-| Quan sát (train 3.000 câu / 30 shop, public 1.000 câu / 14 shop) | Hệ quả thiết kế |
+DataMate Agent answers Vietnamese business questions over shop data stored in CSV, Excel, and SQLite files. Its core design goal is to produce answers that can be executed and checked against the data—and to abstain when the system does not have enough evidence.
+
+| Concern | Design response |
 |---|---|
-| Kiểu đáp án: number 63%, percent 19%, list 6%, date 5%, string 3%, unanswerable 2.3%, boolean, table | Formatter đúng luật §9 của rulebook là điều kiện cần (sai format = −1) |
-| Khoảng 73% câu thuộc **lõi bán hàng**: doanh thu, số đơn, huỷ, giá trị trung bình đơn, % thay đổi, ngày/tháng bán đắt nhất, top-k hàng/khách, tỉ trọng nhóm, số lượng theo đơn vị cơ bản (tỉ lệ tương tự ở public) | Lõi này được tính **deterministic** trên view chuẩn theo rulebook; LLM xử lý phần còn lại |
-| Câu hỏi sinh từ khoảng 30 "họ ý định", diễn đạt lại kèm teencode và **lỗi gõ Telex** ("toongr", "dduwowcj", "thangs") | Bộ chuẩn hoá `qnorm`: bỏ dấu + sửa Telex + bung viết tắt, dùng chung cho mọi bộ phân tích |
-| Hơn 40 cách tổ chức file: CSV phẳng, Excel mỗi tháng một sheet, mỗi tháng một file, header hai tầng, dòng tiêu đề, dòng "Cộng", ngày trộn `dd/mm/yyyy` · serial Excel · `1 thg 6 2025` · `1/6` (năm lấy từ sheet), tiền `45k` · `45.000đ` · `6,719.0000`, số lượng `1 hộp 30`, SQLite tên camelCase, cột tiếng Anh | Loader tổng quát (mục 4.1); test có cả tên cột tiếng Anh |
-| README có **từ điển cột** với mô tả khá chuẩn ("thành tiền sau giảm", "trạng thái đơn"…) nhưng chất lượng không đều | Gán vai trò cột dựa trên README trước, tên cột sau (mục 4.2) |
-| Rulebook **khác nhau giữa các split**: public thêm luật ngành (Mẹ & bé, Sửa xe, Điện thoại), bỏ luật "giá nhập bình quân", thêm "nhà cung cấp chính" | Rulebook đưa nguyên văn vào prompt; code đọc quy ước từ văn bản; template chỉ chạy khi gặp đúng điều luật nó cài (mục 4.4) |
-| Câu `unanswerable` (70 câu ở train): kỳ nằm ngoài dữ liệu, thuộc tính không được ghi (giới tính, địa chỉ, lý do huỷ, kênh, tồn kho, nhập hàng, giá vốn…), câu chủ quan | Bộ kiểm tra khả năng trả lời dựa trên bằng chứng dương (mục 4.9) |
+| Heterogeneous business files | Normalize source files into tables in an embedded DuckDB database. |
+| Different shop schemas | Infer column roles from shop documentation, column names, and observed values. |
+| Split-specific rules | Read the active rulebook at runtime; disable deterministic templates when their required rule clauses are absent. |
+| Ambiguous or unsupported questions | Generate and execute candidates, inspect agreement and errors, and apply an answerability check. |
+| Penalized Accuracy (PA) | Estimate answer correctness and apply a calibrated answer/abstain threshold. |
+| Runtime and offline requirements | Bound execution, derive per-question seeds from the question context, write results incrementally, and check the declared model-parameter budget. |
 
-## 2. Quy tắc quyết định tối ưu cho PA
+The implementation is configured for the challenge constraints documented in the repository. The exact runtime and inference behavior must be evaluated in the target environment; the current recorded results are for the template-and-rules mode.
 
-Với *p* = P(đúng | x): trả lời cho kỳ vọng *2p − 1*, abstain cho 0, nên **trả lời ⇔ p > 0.5**. Đây là reject option
-của Chow [R27] (selective classification [R28]). `unanswerable` cũng là một câu trả lời nên chịu cùng quy tắc.
-Toàn bộ hệ thống phục vụ việc ước lượng *p* cho chuẩn: calibration [R29] bằng logistic/Platt [R30] cộng isotonic [R31],
-fit với **cross-validation nhóm theo shop**, để con số báo cáo phản ánh shop chưa từng thấy (private có business type mới).
+## 2. End-to-end architecture
 
-## 3. Kiến trúc
-
+```mermaid
+flowchart TD
+    Q["Question + business ID + as-of date"] --> U["Question normalization and analysis"]
+    F["Shop files: CSV / Excel / SQLite"] --> L["Loader and DuckDB tables"]
+    R["Rulebook + calendar"] --> C["Rule and time context"]
+    L --> S["Schema roles and canonical business views"]
+    S --> U
+    C --> U
+    U --> G["Candidate generation"]
+    G --> T["Deterministic templates"]
+    G --> SQL["LLM-generated SQL"]
+    G --> PY["Plan-to-SQL / Python / ReAct / repair"]
+    T --> E["Execute and normalize candidates"]
+    SQL --> E
+    PY --> E
+    E --> V["Agreement, validation, confidence calibration"]
+    V --> D{"Expected utility is positive?"}
+    D -->|Yes| A["Formatted answer or unanswerable"]
+    D -->|No| X["Abstain"]
+    A --> O["Submission JSONL + per-question logs"]
+    X --> O
 ```
-/data/<split> ─ rulebook.md ─► RuleBook: văn bản (prompt) · quy ước (code) · dấu vân tay điều luật
-             ─ calendar.csv ─► LunarCalendar (fallback: thuật toán Hồ Ngọc Đức)
-             ─ data/<shop>/ ─► Loader ─► Tables (DuckDB) ─► README dictionary ─► Roles ─► Views:
-                                                         v_sales · v_orders · v_products · v_purchases (+ self-checks)
-question ─► qnorm ─► Analyzer (intent, type, k, ngưỡng, bộ lọc) · TimeResolver · ValueLinker · Answerability
-        ─► Candidates:  templates (0 ms) ──────────────┐
-                        LLM vòng 1: SQL ×3 (batch) ────┤ early-exit nếu ≥3 đồng thuận (và khớp template)
-                        LLM vòng 2: plan→SQL, pandas,  ┤
-                                    ReAct, tự sửa      ┘
-        ─► Gom cụm theo đáp án đã thực thi ─► bỏ phiếu (+ judge) ─► Calibrator ─► Chow ─► submission + log
-```
 
-## 4. Thành phần và nguồn gốc
+## 3. Pipeline stages
 
-### 4.1 Nạp dữ liệu → DuckDB  (`loader.py`)
-* DuckDB [R34] làm engine; mỗi shop một connection in-process.
-* Spider 2.0 [R2] cho thấy prompt-only sụp đổ trên dữ liệu doanh nghiệp (DAIL-SQL + GPT-4o chỉ 5.68% trên Spider 2.0-lite
-  so với 57.4% trên BIRD [R1]). Vì vậy dữ liệu phải được **làm sạch trước khi đặt câu hỏi**:
-  * dò header (bỏ dòng tiêu đề, dùng hàng nhãn nhóm để điền ô header trống), bỏ dòng "Cộng/Tổng cộng", chú thích cuối sheet, dòng header lặp;
-  * gộp các sheet/file cùng tập cột (mỗi tháng một sheet hoặc một file) thành một bảng, có cột `sheet`;
-  * đọc giá trị: tiền, số lượng kèm đơn vị, ngày trộn nhiều định dạng (năm của sheet cho `1/6`), giờ, boolean;
-  * cache theo kích thước và mtime file.
-
-### 4.2 Từ điển README và gán vai trò cột  (`readme.py`, `roles.py`)
-* Schema linking là bước lõi của RESDSQL [R6], CHESS [R7] và CHASE-SQL [R8]. Schema mỗi shop nhỏ nên ta **gán vai trò cho
-  mọi cột** thay vì cắt bớt schema. Bằng chứng theo thứ tự: mô tả cột trong README → tên cột (Việt/Anh/camelCase/viết tắt) →
-  kiểu giá trị. Bảng được phân loại: bán hàng, nhập, tồn, lô, thanh toán, giao hàng, công nợ, chi phí, khách, sản phẩm, quy đổi.
-
-### 4.3 View chuẩn theo rulebook  (`salesview.py`)
-* Từ các bảng thô dựng `v_sales` (mỗi dòng hàng), `v_orders` (mỗi đơn), `v_products`, `v_purchases`. Các luật áp **một lần** tại đây:
-  đơn hợp lệ = không huỷ, không trả (trả một phần cũng bỏ cả đơn; dòng âm, cột "SL trả" > 0, ghi chú "khách trả lại" đều là trả);
-  doanh thu = tổng thành tiền dòng (voucher/điểm/phí ship không tính, "Phí phục vụ" tính doanh thu nhưng không là mặt hàng);
-  số lượng quy về đơn vị cơ bản (bảng quy đổi, cột "Quy đổi" dạng văn bản, hoặc dòng quy đổi trong README);
-  ô trống ở dòng sau của cùng đơn kế thừa dòng đầu; hai dòng giống hệt nhau của cùng đơn tính một lần; khách lẻ không phải khách.
-* **Tự kiểm tra**: `qty × đơn giá ≥ thành tiền` và tổng dòng bằng "tổng tiền hàng" của đơn. Tỉ lệ khớp trở thành đặc trưng
-  tin cậy, quan trọng nhất với shop có định dạng lạ.
-* Tương tự "evidence" của BIRD [R1], nhưng sinh tự động và kiểm chứng được. LLM thấy cả view lẫn bảng thô kèm lineage.
-
-### 4.4 Rulebook theo split, dấu vân tay điều luật  (`rulebook.py`)
-* Văn bản rulebook nằm ở đầu system prompt (giống nhau cho mọi câu nên dùng được prefix cache của vLLM [R32]).
-* Các quy ước code cần (tuần bắt đầu thứ mấy, khung Tết, ca sáng/chiều, "tháng này" so với cùng số ngày, tiêu chí "bán chạy"…)
-  được **đọc từ văn bản**; không tìm thấy mới dùng `configs/rulebook_overrides.yaml`.
-* Mỗi template khai báo các điều luật nó cài đặt (`templates.NEEDS`). Điều luật không có trong rulebook của split thì template
-  **tự tắt** và LLM trả lời từ văn bản. Kiểm chứng trên dữ liệu thật: rulebook public bỏ luật "giá nhập bình quân" nên template
-  đó tắt ở public nhưng vẫn chạy ở train.
-
-### 4.5 Thời gian và lịch âm  (`timeresolver.py`, `lunar.py`)
-* LLM không tự tính ngày. Mọi cách nói được đổi thành khoảng `[start, end)` và đưa vào prompt dưới dạng literal SQL: hôm qua,
-  N ngày gần nhất (kể cả hôm nay), tuần này/trước (thứ Hai–Chủ nhật), tháng này (đến hết hôm nay, so với cùng số ngày của tháng
-  trước), tháng M không ghi năm, quý, "từ X đến Y", "từ 1/1 đến hết hôm nay", "xét các tháng A, B, C", "N ngày kể từ D so với N
-  ngày liền trước", cùng kỳ năm trước, Tết Y = 23 tháng Chạp → mùng 10 (tra `calendar.csv`), "trước Tết", ca sáng/chiều,
-  "đến hết ngày X" (snapshot).
-* Lịch âm: ưu tiên file của BTC; fallback thuật toán Hồ Ngọc Đức [R37] (Meeus [R38]), đã kiểm thử Tết 2023–2027 và tháng nhuận 2025.
-
-### 4.6 Hiểu câu hỏi  (`textnorm.py`, `question.py`, `linker.py`)
-* Phân loại câu hỏi trước khi sinh như DIN-SQL [R3], nhưng bằng luật (không tốn lời gọi LLM): khoảng 30 ý định, kiểu đáp án,
-  k, ngưỡng ("từ X trở lên", "≥ X", "trên X"), bộ lọc (nhóm hàng, nhóm khách, hình thức thanh toán, size).
-* Liên kết giá trị: CHESS [R7] dùng LSH và CHASE-SQL [R8] dùng trích từ khoá kết hợp LSH. Dữ liệu mỗi shop nhỏ nên ta làm
-  bản **chính xác**: so mọi span của câu hỏi với mọi giá trị phân biệt (rapidfuzz), chấm điểm cả trường hợp gọi tắt, và phát
-  hiện nhập nhằng (AmbiQT [R25]).
-
-### 4.7 Template deterministic  (`templates.py`)
-* Mỗi ý định của lõi bán hàng (và nhóm nhập hàng) là một chương trình nhỏ, kiểm toán được, có độ mạnh `strength`.
-* Mỗi từ trong câu hỏi mà template không hiểu làm giảm độ mạnh (×0.6), nghĩa là template "biết mình không biết".
-* Template là **một họ ứng viên độc lập**: khi khớp với LLM thì là tín hiệu tin cậy mạnh (đồng thuận giữa các họ).
-
-### 4.8 LLM: sinh đa dạng, thực thi, tự sửa, bỏ phiếu  (`agent.py`, `prompts.py`, `executor.py`)
-
-| Họ ứng viên | Nguồn |
-|---|---|
-| SQL trực tiếp × n (batch, seed cố định) | self-consistency [R11]; voting trong Arctic-Text2SQL-R1 [R10] |
-| Plan → SQL | query-plan CoT / divide-and-conquer của CHASE-SQL [R8] |
-| pandas (CodeAct) | CodeAct [R13]; InfiAgent-DABench [R15] |
-| ReAct thăm dò dữ liệu | ReAct [R12]; bối cảnh agentic của Spider 2.0 [R2] |
-| Tự sửa bằng phản hồi thực thi | execution-guided decoding [R16]; Self-Debugging [R17]; query fixer của CHASE-SQL [R8] |
-| Gom cụm theo đáp án đã thực thi rồi bỏ phiếu | semantic entropy [R23, R24]; voting là baseline abstention mạnh trong TrustSQL [R19] |
-| Judge một lần khi hai cụm sát nhau | bản rút gọn của selector pairwise trong CHASE-SQL [R8] (bản gốc tốn hàng chục lời gọi/câu) |
-
-* Không dùng MCTS (Alpha-SQL [R4]) vì quá tốn thời gian so với tie-break theo thời gian inference.
-* Bài học từ smoke test với model nhỏ: khi được yêu cầu sửa lỗi, model hay "đầu hàng" bằng `unanswerable`. Vì vậy
-  `unanswerable` phát ra ở bước sửa lỗi bị coi là thất bại, không phải một phiếu.
-
-### 4.9 Khả năng trả lời  (`answerability.py`)
-* Chỉ trả `unanswerable` khi có **bằng chứng dương** (PRACTIQ [R22] cùng rulebook §7): kỳ hoàn toàn ngoài dữ liệu (kỳ chỉ
-  giao một phần thì vẫn tính), shop không ghi loại thông tin cần (thanh toán, kênh, nhóm khách, địa chỉ, giới tính, lý do,
-  tồn kho, nhập hàng, giá vốn, công nợ, hạn dùng, giờ, nhân viên), câu chủ quan, mặt hàng không tồn tại.
-
-### 4.10 Calibration và ngưỡng  (`calibrate.py`, `scripts/fit_calibrator.py`)
-* Đặc trưng: mức đồng thuận, khoảng cách giữa hai cụm đầu, đồng thuận giữa các họ, template có khớp không, độ mạnh template,
-  tỉ lệ lỗi/rỗng (bộ lọc mạnh nhất ở EHRSQL-2024: PLUQ [R20], ProbGate [R21]), bằng chứng unanswerable, nhập nhằng liên kết,
-  tự kiểm tra của view, ý định (one-hot).
-* Logistic (cộng isotonic khi có ≥300 mẫu), **CV nhóm theo shop**. Không chọn ngưỡng theo leaderboard (bài học từ EHRSQL-2024 [R18]).
-* Conformal abstention [R26] chỉ dùng để kiểm tra an toàn, vì PA tối đa hoá 2p − 1 chứ không ràng buộc tỉ lệ lỗi.
-
-### 4.11 Mô hình và vận hành theo luật thi
-* **≤ 15B tham số**: Qwen3-14B [R35] (14,8B, Apache-2.0, phát hành 04/2025) chiếm gần trọn ngân sách nên mặc định không có
-  model thứ hai. `run.py` kiểm tra tổng tham số đã khai báo.
-* Serving: vLLM [R32] TP=2 trên 2×RTX 5090, bật prefix caching (rulebook và thẻ shop dùng chung). Chế độ thinking của Qwen3 bật
-  mặc định (6 giờ cho khoảng 500 câu là khoảng 40 giây mỗi câu).
-* **Tái lập**: seed mỗi lời gọi suy từ nội dung câu hỏi (không từ id); `temperature` cố định; xử lý tuần tự từng shop.
-* **Ngân sách 6 giờ**: ghi `submission.jsonl` theo từng dòng; sau `fast_after_s` chỉ dùng template và luật; quá hạn thì abstain.
-* **Log**: `/result/logs/<id>.json` gồm đáp án, thời gian, ý định, khoảng thời gian, mọi chương trình ứng viên và output.
-
-## 5. Kết quả  (xem mục 5 của README để có số mới nhất)
-
-Kết quả được cập nhật tự động ở `docs/RESULTS.md` sau mỗi lần chạy `scripts/eval_templates.py` + `scripts/fit_calibrator.py`.
-
-## 6. Chiến lược tổng quát hoá sang business type mới (private test)
-1. Không có logic theo id câu hỏi hay id shop (luật thi số 4); không tra đáp án.
-2. Vai trò cột lấy từ README trước, tên cột (Việt/Anh) sau, kèm kiểm tra kiểu giá trị.
-3. View tự kiểm tra; khi lệch thì tin cậy giảm và LLM được thấy cảnh báo.
-4. Dấu vân tay điều luật: luật mới hoặc thay đổi thì template tắt, LLM đọc văn bản.
-5. Calibrator được đánh giá bằng CV nhóm theo shop, không theo câu.
-6. Ý định đặc thù ngành (sửa xe, điện thoại, mẹ & bé, thuốc…) để LLM xử lý trên view và bảng thô.
-
-## 7. Kế hoạch thí nghiệm
-| # | Cấu hình | Mục đích |
+| Stage | Main implementation | Responsibility |
 |---|---|---|
-| A0 | Template + luật (không LLM) | baseline an toàn; dùng khi hết giờ |
-| A1 | + SQL × 3, không template | đóng góp riêng của LLM |
-| A2 | + template (đầy đủ vòng 1) | đồng thuận giữa các họ |
-| A3 | + vòng 2 (plan, pandas, ReAct) | cứu câu khó |
-| A4 | thinking on/off | trade-off PA và thời gian |
-| A5 | calibrator fit (CV theo shop) với τ = 0.5 hoặc τ tối ưu | PA cuối |
-Cách chạy: mọi biến thể là cờ `--set` của `scripts/run.py` (ví dụ `--set agent.use_templates=false`).
+| Ingestion | `datamate/loader.py` | Discover files, clean headers and values, merge compatible sheets/files, and register data in DuckDB. |
+| Semantic interpretation | `datamate/readme.py`, `roles.py`, `salesview.py` | Infer table/column meaning and build canonical sales, order, product, and purchase views. |
+| Question understanding | `textnorm.py`, `question.py`, `timeresolver.py`, `linker.py` | Normalize Vietnamese text, identify intent and filters, resolve periods, and link mentions to data values. |
+| Candidate generation | `templates.py`, `agent.py`, `prompts.py` | Produce deterministic answers and, when enabled, SQL, plan-to-SQL, Python, and ReAct candidates. |
+| Execution and selection | `executor.py`, `formatter.py`, `agent.py` | Execute candidates in bounded environments, normalize answer types, cluster equivalent outputs, and vote. |
+| Reliability decision | `answerability.py`, `calibrate.py`, `scorer.py` | Track evidence and confidence, then answer, emit `unanswerable`, or abstain. |
+| Operations | `scripts/run.py` | Enforce the declared parameter budget, write outputs incrementally, and retain per-question traces. |
 
-## 8. Giới hạn
-* Chưa chạy được LLM thật trên GPU trong môi trường phát triển (chỉ có CPU 2 nhân). Đường LLM đã được kiểm thử bằng LLM giả lập
-  và một model 1,5B trên CPU. Calibrator cho chế độ có LLM **phải được fit lại** bằng một lần chạy trên train với GPU.
-* Các ý định ngoài lõi bán hàng (công nợ, tồn kho, lô/hạn dùng, giao hàng, ngành đặc thù) hoàn toàn dựa vào LLM.
+## 4. Key design decisions
+
+### 4.1 Normalize data before reasoning
+
+The system does not ask an LLM to infer every detail from raw spreadsheets. It normalizes common data problems first: title rows, multi-row headers, repeated headers, total rows, mixed date and currency formats, unit-bearing quantities, and repeated monthly sheets. Column roles and shop documentation then support canonical views.
+
+### 4.2 Apply business rules once
+
+Shared sales semantics—such as valid orders, returns, revenue-line handling, base-unit quantities, and walk-in customers—are implemented in the canonical views rather than re-created independently by every candidate. View checks and lineage warnings become evidence for candidate selection.
+
+### 4.3 Combine deterministic and model-generated candidates
+
+Templates cover supported high-frequency question patterns. When an LLM is enabled, the agent can also generate direct SQL, plan-to-SQL, Python/pandas, and ReAct candidates, with execution feedback available for repair. Candidates are compared by their **executed answers**, not only by their generated text.
+
+### 4.4 Treat the rulebook as runtime input
+
+The active split's rulebook is passed to the LLM. Deterministic templates declare the clauses they implement; a template is disabled when the required clause is absent. This reduces the risk of applying a rule that changed between splits.
+
+### 4.5 Make abstention an explicit action
+
+An unsupported answer should not be replaced with a plausible-looking guess. The system looks for positive evidence that the data cannot answer the question and estimates candidate reliability before committing to an output.
+
+## 5. Answer-versus-abstain policy
+
+Under Penalized Accuracy, a correct answer scores +1, a wrong answer scores −1, and abstention scores 0. Let $p$ be the estimated probability that a proposed answer is correct.
+
+The expected score of answering is $E[S \mid \text{answer}] = p(+1) + (1-p)(-1) = 2p - 1$. Because abstention has expected score 0, the basic decision rule is to answer when $p > 0.5$. The same logic applies to an `unanswerable` response: it is a scored answer and must be correct. The configured thresholds and calibration quality still matter; a probability estimate should not be treated as trustworthy merely because it is numeric.
+
+## 6. Runtime and reproducibility
+
+- The default configuration declares Qwen3-14B (14.8B parameters) and checks declared model sizes against the 15B total budget when LLM inference is enabled.
+- The default run budget is 20,700 seconds, with a template-and-rules fallback after the configured fast-path cutoff.
+- Per-question seeds are derived from question text, the as-of date, and candidate family—not from row IDs.
+- Results are appended and flushed as decisions are made; the final output is restored to input order.
+- Per-question logs record the answer, elapsed time, intent/time context, candidate programs, and execution outputs.
+
+These are implementation/configuration properties, not a claim that the full GPU inference path has already been benchmarked end to end.
+
+## 7. Evidence and limitations
+
+The recorded template-only run reports **0.888 PA on 3,000 training questions** and produces non-abstaining outputs for 635 of 1,000 public questions. The training result is **in-sample**: failures were inspected on the training split and used to improve general-purpose parsing and data handling. The public split has no labels in this repository, so its output coverage is not a public-test accuracy or PA score.
+
+The full LLM-enabled pipeline requires a separate run on the target GPU environment and a calibrator fitted to traces from that same inference mode. See [Results](datamate-agent/docs/RESULTS.md) for counts, interpretation, known fixes, and reproduction commands.
+
+## 8. Further reading
+
+- [Detailed architecture and design rationale](datamate-agent/docs/DESIGN.md)
+- [Evaluation results and limitations](datamate-agent/docs/RESULTS.md)
+- [Research references](datamate-agent/docs/REFERENCES.md)
+- [Implementation setup and run instructions](datamate-agent/README.md)
