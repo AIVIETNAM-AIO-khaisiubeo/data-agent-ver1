@@ -2,7 +2,7 @@
 
 > **Document scope:** implementation-level architecture, design rationale, safeguards, and research context for the DataMate submission in Zalo AI Challenge 2026. This document describes the code and configuration in this repository; it does not imply that every mode has been benchmarked on the target GPU setup.
 >
-> **Related documents:** [Results](RESULTS.md) · [References](REFERENCES.md) · [Implementation and run guide](../README.md) · [Repository-level design overview](../../DESIGN.md)
+> **Related documents:** [Getting Started](../GETTING_STARTED.md) · [Data Layout](DATA_LAYOUT.md) · [Results](RESULTS.md) · [References](REFERENCES.md) · [Repository-level design overview](../../DESIGN.md)
 
 ## Contents
 
