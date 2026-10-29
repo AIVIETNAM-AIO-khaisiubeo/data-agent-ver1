@@ -83,7 +83,7 @@ data-agent-ver1/
 
 ## Decision policy
 
-The competition uses Penalized Accuracy (PA): a correct answer receives **+1**, a wrong answer **−1**, and abstaining **0**. If (p) is the estimated probability that a proposed answer is correct, then:
+The competition uses Penalized Accuracy (PA): a correct answer receives **+1**, a wrong answer **−1**, and abstaining **0**. If $p$ is the estimated probability that a proposed answer is correct, then:
 
 $$
 \mathbb{E}[S \mid \text{answer}] = p(1) + (1-p)(-1) = 2p - 1
