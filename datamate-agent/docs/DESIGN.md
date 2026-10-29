@@ -2,7 +2,7 @@
 
 > **Document scope:** implementation-level architecture, design rationale, safeguards, and research context for the DataMate submission in Zalo AI Challenge 2026. This document describes the code and configuration in this repository; it does not imply that every mode has been benchmarked on the target GPU setup.
 >
-> **Related documents:** [Results](RESULTS.md) · [References](REFERENCES.md) · [Implementation and run guide](../README.md) · [Repository-level design overview](../../DESIGN.md)
+> **Related documents:** [Getting Started](../GETTING_STARTED.md) · [Data Layout](DATA_LAYOUT.md) · [Results](RESULTS.md) · [References](REFERENCES.md) · [Repository-level design overview](../../DESIGN.md)
 
 ## Contents
 
@@ -317,4 +317,6 @@ Variants can be selected with `--set` overrides to `scripts/run.py`; for example
 
 ## 8. References
 
-Research citations used throughout this document are listed in [`REFERENCES.md`](REFERENCES.md). The reference labels are stable identifiers used in both this document and source-code docstrings.
+Research citations used throughout this document are listed in [References](REFERENCES.md); the labels are stable identifiers also used in source-code docstrings.
+
+**Continue reading:** [Getting Started](../GETTING_STARTED.md) for setup and run commands · [Data Layout](DATA_LAYOUT.md) for split structure · [Evaluation Results](RESULTS.md) for measured outcomes and limitations.

@@ -1,126 +1,106 @@
 # DataMate Agent
 
-### Zalo AI Challenge 2026
+**Zalo AI Challenge 2026** · Vietnamese business-question answering over CSV, Excel, and SQLite data
 
-DataMate Agent answers Vietnamese business questions over shop data stored in **CSV, Excel, and SQLite**. It combines deterministic data processing with LLM-generated SQL/Python candidates, executes and checks candidate outputs, and decides whether to answer or abstain.
+DataMate Agent combines deterministic data processing with optional LLM-generated SQL/Python candidates. It executes and compares candidate results, estimates answer reliability, and decides whether to answer or abstain.
 
-> **Start here:** the implementation lives in [`datamate-agent/`](datamate-agent/). This root README is the project landing page; setup commands and competition-specific run instructions are documented in [`datamate-agent/README.md`](datamate-agent/README.md).
+## Documentation guide
 
-## Pipeline at a glance
+This is the **only repository README** and the main entry point. Follow the guides below in order depending on what you need.
 
-- **Input:** a business question, a shop's data files, the active rulebook, and optional calendar data.
-- **Data layer:** normalize heterogeneous files and build DuckDB tables and semantic views.
-- **Question understanding:** normalize Vietnamese text, infer intent, resolve time periods, and link question terms to values in the shop data.
-- **Candidate generation:** use deterministic templates and, when enabled, LLM-generated SQL, plan-to-SQL, Python, and ReAct candidates.
-- **Verification and decision:** execute candidates, compare their normalized outputs, estimate confidence, and answer or abstain.
-- **Output:** a structured `submission.jsonl` plus per-question logs.
+| If you want to… | Read |
+|---|---|
+| Install dependencies, run tests, generate a submission, or configure GPU/Docker inference | [Getting Started](datamate-agent/GETTING_STARTED.md) |
+| Understand the architecture at a glance | [System Design Overview](DESIGN.md) |
+| Understand each component, its rationale, and research connections | [Detailed Design](datamate-agent/docs/DESIGN.md) |
+| Prepare the input split and understand the expected data layout | [Data Layout](datamate-agent/docs/DATA_LAYOUT.md) |
+| Understand the measured results, known failure modes, and limitations | [Evaluation Results](datamate-agent/docs/RESULTS.md) |
+| Find the papers and methods cited by the design | [Research References](datamate-agent/docs/REFERENCES.md) |
 
-## Architecture
+### Suggested reading paths
+
+**New contributor:** start with [Getting Started](datamate-agent/GETTING_STARTED.md), then read the [System Design Overview](DESIGN.md) and the [Detailed Design](datamate-agent/docs/DESIGN.md). Consult [Data Layout](datamate-agent/docs/DATA_LAYOUT.md) before adding or testing a new shop schema.
+
+**Reproducing results:** follow [Getting Started](datamate-agent/GETTING_STARTED.md) for commands, then [Evaluation Results](datamate-agent/docs/RESULTS.md) for the exact interpretation and reproduction steps.
+
+**Researching a method:** find its reference label in [Detailed Design](datamate-agent/docs/DESIGN.md), then look it up in [Research References](datamate-agent/docs/REFERENCES.md).
+
+## Pipeline overview
+
+1. **Load and normalize data** from CSV, Excel, and SQLite into DuckDB.
+2. **Build a semantic layer** using shop documentation, inferred column roles, canonical business views, and the active rulebook.
+3. **Understand the question** by normalizing Vietnamese text, identifying intent and filters, and resolving dates and entity mentions.
+4. **Generate candidates** using deterministic templates and, when enabled, SQL, plan-to-SQL, Python/pandas, and ReAct.
+5. **Execute and validate** candidates, compare normalized answers, estimate confidence, and answer or abstain.
+6. **Write outputs** to the submission JSONL and per-question logs.
 
 ```mermaid
 flowchart TD
-    A["Question + business ID + as-of date"] --> B["Input discovery"]
-    D["Shop files: CSV / Excel / SQLite"] --> C["Data loader"]
-    R["Rulebook + calendar"] --> E["Rules and time context"]
-    C --> F["DuckDB tables"]
-    F --> G["Semantic layer: column roles + standardized views"]
-    G --> H["Question understanding"]
-    B --> H
-    E --> H
-    H --> I["Candidate generation"]
-    I --> I1["Deterministic templates"]
-    I --> I2["LLM: SQL / plan-to-SQL"]
-    I --> I3["Python / ReAct / repair"]
-    I1 --> J["Execute and normalize candidate outputs"]
-    I2 --> J
-    I3 --> J
-    J --> K["Agreement, validation, and confidence calibration"]
-    K --> L{"Expected utility is positive?"}
-    L -->|Yes| M["Formatted answer or unanswerable"]
-    L -->|No| N["Abstain"]
-    M --> O["submission.jsonl + logs"]
-    N --> O
+    Q["Question + business ID + as-of date"] --> U["Question understanding"]
+    F["CSV / Excel / SQLite"] --> L["Loader + DuckDB"]
+    L --> S["Schema roles + canonical views"]
+    R["Rulebook + calendar"] --> C["Rules + time context"]
+    S --> U
+    C --> U
+    U --> G["Candidate generation"]
+    G --> T["Deterministic templates"]
+    G --> M["LLM: SQL / plan / Python / ReAct"]
+    T --> E["Execute and normalize"]
+    M --> E
+    E --> V["Agreement + validation + calibration"]
+    V --> D{"Confidence sufficient?"}
+    D -->|Yes| A["Answer / unanswerable"]
+    D -->|No| X["Abstain"]
+    A --> O["Submission + logs"]
+    X --> O
 ```
+
+## Current recorded results
+
+These figures are from **template-and-rules mode without an LLM**. They do not represent a full Qwen3-14B GPU run.
+
+| Split | Correct | Wrong | Abstain | PA |
+|---|---:|---:|---:|---:|
+| Train: 3,000 questions, in-sample | 2,667 | 3 | 330 | 0.888 |
+| Public: 1,000 questions, no labels available | — | — | 365 | Not available |
+
+The public run produced 611 typed answers and 24 `unanswerable` outputs, for 635 non-abstaining outputs in total. Public ground truth is not included, so this is **coverage, not public-test accuracy or PA**. The training result is in-sample because training failures were inspected during development.
+
+See [Evaluation Results](datamate-agent/docs/RESULTS.md) for the full record and caveats.
 
 ## Repository map
 
 ```text
 data-agent-ver1/
-├── README.md                     # Project landing page
-├── DESIGN.md                     # Concise system-design overview
-├── datamate-agent/               # Main implementation
-│   ├── README.md                 # Setup, run, and competition instructions
-│   ├── datamate/                 # Core pipeline modules
-│   ├── configs/                  # Runtime configuration and rule overrides
-│   ├── scripts/                  # Run, evaluate, serve, and calibration scripts
-│   ├── tests/                    # Unit and pipeline tests
-│   ├── docs/
-│   │   ├── DESIGN.md             # Detailed architecture and design rationale
-│   │   ├── REFERENCES.md         # Research papers and technical references
-│   │   └── RESULTS.md            # Evaluation results and limitations
-│   ├── submissions/              # Submission snapshots
-│   ├── Dockerfile
-│   ├── Makefile
-│   └── requirements.txt
-├── submission.jsonl              # Root-level submission snapshot
-└── public_logs.zip               # Public-run log archive
+├── README.md                         # Single project entry point
+├── DESIGN.md                         # High-level architecture
+├── datamate-agent/
+│   ├── GETTING_STARTED.md            # Setup, inference, evaluation, Docker
+│   ├── datamate/                     # Agent and data-processing modules
+│   ├── configs/                      # Runtime configuration and rule overrides
+│   ├── scripts/                      # Run, evaluate, serve, calibrate
+│   ├── tests/                        # Unit and pipeline tests
+│   └── docs/
+│       ├── DESIGN.md                 # Detailed architecture and rationale
+│       ├── DATA_LAYOUT.md            # Expected data split structure
+│       ├── REFERENCES.md             # Research bibliography
+│       └── RESULTS.md                # Evaluation and limitations
+├── submission.jsonl                  # Root-level submission snapshot
+└── public_logs.zip                   # Public-run log archive
 ```
 
-## Core modules
+## Quick check
 
-| Module | Responsibility |
-|---|---|
-| `loader.py` | Reads CSV/Excel/SQLite files, normalizes headers and values, and loads data into DuckDB. |
-| `readme.py` + `roles.py` | Uses shop documentation and column evidence to infer column roles and table meaning. |
-| `salesview.py` | Builds canonical business views and applies the active rulebook's sales/order conventions. |
-| `textnorm.py` + `question.py` | Normalizes Vietnamese queries and extracts intent, answer type, filters, thresholds, and top-k. |
-| `timeresolver.py` + `lunar.py` | Resolves relative periods and Vietnamese lunar-calendar references. |
-| `linker.py` + `answerability.py` | Links question terms to data values and detects cases where requested information is unavailable. |
-| `templates.py` | Generates deterministic candidates for supported question patterns. |
-| `agent.py` + `prompts.py` | Orchestrates LLM candidate generation, planning, exploration, and repair. |
-| `executor.py` + `formatter.py` | Executes candidates and converts results into the required answer schema. |
-| `calibrate.py` + `scorer.py` | Estimates answer reliability and applies the answer/abstain decision rule. |
-
-## Decision policy
-
-The competition uses Penalized Accuracy (PA): a correct answer receives **+1**, a wrong answer **−1**, and abstaining **0**. If $p$ is the estimated probability that a proposed answer is correct, then:
-
-$$
-\mathbb{E}[S \mid \text{answer}] = p(1) + (1-p)(-1) = 2p - 1
-$$
-
-Therefore, answering is preferable to abstaining when the calibrated probability is above **0.5**, subject to the configured decision thresholds. An `unanswerable` response is also a scored answer, not an abstention. Confidence estimates are only as reliable as the evidence and calibration process behind them.
-
-## Results and interpretation
-
-The implementation README and [results report](datamate-agent/docs/RESULTS.md) distinguish the offline/template-only run from the full LLM pipeline. The recorded training result is **in-sample** and should not be treated as an estimate of performance on unseen shops. The public-test output has no ground-truth labels in this repository, so its answer coverage does not establish public-test PA.
-
-- [System-design overview](DESIGN.md)
-- [Detailed architecture and design rationale](datamate-agent/docs/DESIGN.md)
-- [Research references](datamate-agent/docs/REFERENCES.md)
-- [Results, evaluation setup, and limitations](datamate-agent/docs/RESULTS.md)
-- [Implementation setup and run instructions](datamate-agent/README.md)
-
-## Quick start
-
-Open a terminal at the repository root, then enter the implementation directory:
+From the repository root:
 
 ```bash
 cd datamate-agent
 python -m pip install -r requirements.txt
-python -m pytest -q tests
+make test
 ```
 
-For GPU inference, template-only execution, data layout, evaluation, calibration, and Docker submission instructions, follow [`datamate-agent/README.md`](datamate-agent/README.md). Do not commit private competition data, API keys, or downloaded model weights.
+For all run modes and submission instructions, continue to [Getting Started](datamate-agent/GETTING_STARTED.md).
 
-## Reproducibility and responsible reporting
+## Reporting principles
 
-- Keep data splits, rulebooks, and evaluation configuration explicit.
-- Report the exact mode used: template-only, simulated LLM, or real LLM inference.
-- Record the model, configuration, random seed, runtime, and output logs for each experiment.
-- Evaluate by shop/group where appropriate; do not rely on in-sample metrics alone.
-- Do not claim a public-test score unless the corresponding ground truth and official scoring procedure are available.
-
----
-
-**For contributors:** start with the implementation README, then read `configs/default.yaml`, `datamate/agent.py`, and the relevant module before changing pipeline behavior. Run the tests before proposing a merge.
+Keep template-only, simulated-LLM, and real-LLM results separate. Record the model, configuration, split, seed policy, runtime, submission, and per-question logs. Do not claim a public-test score without the corresponding ground truth and official scoring procedure.

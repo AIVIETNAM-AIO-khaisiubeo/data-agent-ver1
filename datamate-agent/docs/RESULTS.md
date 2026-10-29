@@ -1,6 +1,8 @@
 # Evaluation Results — Round 1 (Template-Only Mode)
 
 > **Evaluation status:** The results below are from the deterministic template-and-rules path (`llm.backend=none`) in a development environment with a two-core CPU. They are not results for a full Qwen3-14B GPU run. The full LLM path requires its own evaluation and a calibrator fitted to traces from that same inference configuration.
+>
+> **Related guides:** [Getting Started](../GETTING_STARTED.md) · [Data Layout](DATA_LAYOUT.md) · [Detailed Design](DESIGN.md)
 
 ## At a glance
 
@@ -100,7 +102,7 @@ The table below summarizes recurring data and interpretation failures found duri
 
 ## 5. Reproduction commands
 
-Run the commands from the `datamate-agent/` directory. Replace the paths with the actual challenge split locations.
+Run the commands from the `datamate-agent/` directory. Replace the paths with the actual challenge split locations. For the full environment setup, see [Getting Started](../GETTING_STARTED.md); for the required input structure, see [Data Layout](DATA_LAYOUT.md).
 
 ### 5.1 Evaluate template candidates on train
 

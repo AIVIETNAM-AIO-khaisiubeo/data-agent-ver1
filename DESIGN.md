@@ -1,6 +1,6 @@
 # DataMate Agent — System Design Overview
 
-> **Purpose.** This document gives a concise, implementation-oriented overview of DataMate Agent. For the full module-by-module rationale and research context, see [the detailed design document](datamate-agent/docs/DESIGN.md). The evaluation record is maintained in [Results](datamate-agent/docs/RESULTS.md), and paper citations are listed in [References](datamate-agent/docs/REFERENCES.md).
+> **Purpose.** This is the concise, implementation-oriented architecture overview. For setup and execution commands, start with [Getting Started](datamate-agent/GETTING_STARTED.md). For data preparation, see [Data Layout](datamate-agent/docs/DATA_LAYOUT.md); for module-level rationale, see the [Detailed Design](datamate-agent/docs/DESIGN.md). Evaluation and citations are in [Results](datamate-agent/docs/RESULTS.md) and [References](datamate-agent/docs/REFERENCES.md).
 
 ## Contents
 
@@ -115,5 +115,6 @@ The full LLM-enabled pipeline requires a separate run on the target GPU environm
 
 - [Detailed architecture and design rationale](datamate-agent/docs/DESIGN.md)
 - [Evaluation results and limitations](datamate-agent/docs/RESULTS.md)
+- [Input split and shop-file layout](datamate-agent/docs/DATA_LAYOUT.md)
 - [Research references](datamate-agent/docs/REFERENCES.md)
-- [Implementation setup and run instructions](datamate-agent/README.md)
+- [Installation, inference, evaluation, and Docker instructions](datamate-agent/GETTING_STARTED.md)
