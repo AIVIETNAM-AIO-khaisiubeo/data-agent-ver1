@@ -51,18 +51,18 @@ The design uses research as guidance rather than as a claim of equivalent benchm
 
 Penalized Accuracy (PA) assigns **+1** to a correct answer, **−1** to an incorrect answer, and **0** to abstention. Let $p=P(\text{correct}\mid x)$ be the estimated probability that a candidate answer is correct.
 
-$
+$$$$
 \begin{aligned}
 \mathbb{E}[S\mid\text{answer}] &= p(+1)+(1-p)(-1)=2p-1,\\
 \mathbb{E}[S\mid\text{abstain}] &= 0.
 \end{aligned}
-$
+$$$$
 
 Therefore, the basic PA-optimal reject rule is:
 
-$
+$$$$
 \boxed{\text{Answer if }p>0.5;\quad\text{otherwise abstain.}}
-$
+$$$$
 
 This is the reject-option decision described by Chow [R27] and is closely related to selective classification [R28]. An `unanswerable` response is still an answer and is subject to the same rule. It should only be selected when the evidence supports it.
 
@@ -185,7 +185,7 @@ The active challenge calendar file takes precedence for solar–lunar dates. The
 
 **Implementation:** `datamate/textnorm.py`, `question.py`, `linker.py`, `attributes.py`
 
-Question analysis uses deterministic rules before candidate generation. It extracts the likely intent, expected answer type, top-$k$, thresholds such as “at least (X)” or “above (X)”, time periods, and filters such as product group, customer group, payment method, sales channel, shift, or size. The intent vocabulary has roughly 30 categories.
+Question analysis uses deterministic rules before candidate generation. It extracts the likely intent, expected answer type, top-$k$, thresholds such as “at least $X$” or “above $X$”, time periods, and filters such as product group, customer group, payment method, sales channel, shift, or size. The intent vocabulary has roughly 30 categories.
 
 Value linking maps question mentions to values found in the shop data. Instead of relying on an approximate schema-wide retrieval step, the linker compares question spans with distinct data values using normalized matching and `rapidfuzz`, checks aliases, and flags ambiguous matches [R25].
 
