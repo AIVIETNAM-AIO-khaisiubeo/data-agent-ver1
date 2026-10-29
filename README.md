@@ -70,24 +70,75 @@ See [Evaluation Results](datamate-agent/docs/RESULTS.md) for the full record and
 
 ## Repository map
 
+The tree below lists the **tracked files currently present in the repository**, including the Python source files, command-line scripts, tests, configuration, and documentation. Inline comments describe each module's primary responsibility.
+
 ```text
 data-agent-ver1/
-├── README.md                         # Single project entry point
-├── DESIGN.md                         # High-level architecture
-├── datamate-agent/
-│   ├── GETTING_STARTED.md            # Setup, inference, evaluation, Docker
-│   ├── datamate/                     # Agent and data-processing modules
-│   ├── configs/                      # Runtime configuration and rule overrides
-│   ├── scripts/                      # Run, evaluate, serve, calibrate
-│   ├── tests/                        # Unit and pipeline tests
-│   └── docs/
-│       ├── DESIGN.md                 # Detailed architecture and rationale
-│       ├── DATA_LAYOUT.md            # Expected data split structure
-│       ├── REFERENCES.md             # Research bibliography
-│       └── RESULTS.md                # Evaluation and limitations
-├── submission.jsonl                  # Root-level submission snapshot
-└── public_logs.zip                   # Public-run log archive
+├── README.md
+├── DESIGN.md
+├── submission.jsonl                  # Root-level public-test submission snapshot
+├── public_logs.zip                   # Archived public-run logs
+└── datamate-agent/
+    ├── .gitignore
+    ├── Dockerfile                    # Container image for the application
+    ├── GETTING_STARTED.md            # Setup, run modes, evaluation, calibration, Docker
+    ├── LICENSE
+    ├── Makefile                      # Test and development commands
+    ├── predict.sh                    # Challenge inference entry point
+    ├── pyproject.toml                # Python package/tool configuration
+    ├── requirements.txt              # Python dependencies
+    ├── artifacts/
+    │   ├── .gitkeep
+    │   └── calibrator_offline.pkl    # Offline/prior calibrator artifact
+    ├── configs/
+    │   ├── default.yaml              # Runtime, model, candidate, and decision settings
+    │   └── rulebook_overrides.yaml   # Structured overrides for rulebook conventions
+    ├── datamate/
+    │   ├── __init__.py
+    │   ├── agent.py                  # Candidate generation, escalation, selection, voting
+    │   ├── answerability.py          # Evidence-based answerability checks
+    │   ├── attributes.py             # Business/catalog attribute extraction
+    │   ├── calibrate.py              # Confidence calibration and probability estimation
+    │   ├── config.py                 # Configuration loading and overrides
+    │   ├── executor.py               # Bounded SQL/Python execution and result handling
+    │   ├── formatter.py              # Typed answer normalization and output formatting
+    │   ├── linker.py                 # Question-to-data-value/entity linking
+    │   ├── llm.py                    # LLM backend/client interface
+    │   ├── loader.py                 # CSV/Excel/SQLite ingestion and DuckDB preparation
+    │   ├── lunar.py                  # Vietnamese lunar-calendar calculations/fallback
+    │   ├── prompts.py                # LLM system/task prompts
+    │   ├── question.py               # Intent, filters, answer type, and time-question parsing
+    │   ├── readme.py                 # Shop README/column-dictionary parsing
+    │   ├── roles.py                  # Table and column role inference
+    │   ├── rulebook.py               # Rulebook parsing, settings, and clause fingerprints
+    │   ├── salesview.py              # Canonical sales/order/product/purchase views
+    │   ├── scorer.py                 # Candidate evidence and scoring features
+    │   ├── synthetic.py               # Synthetic data/question helpers
+    │   ├── templates.py               # Deterministic business-question answer templates
+    │   ├── textnorm.py               # Vietnamese text normalization
+    │   └── timeresolver.py           # Date-range and time-expression resolution
+    ├── docs/
+    │   ├── DATA_LAYOUT.md             # Expected input split and data-folder structure
+    │   ├── DESIGN.md                 # Detailed component design and research rationale
+    │   ├── REFERENCES.md              # Research bibliography and reference labels
+    │   └── RESULTS.md                 # Recorded results, reproduction notes, limitations
+    ├── scripts/
+    │   ├── eval_templates.py          # Evaluate deterministic template mode
+    │   ├── evaluate.py                # Evaluate saved predictions against labels
+    │   ├── fit_calibrator.py          # Fit and inspect the confidence calibrator
+    │   ├── inspect_business.py        # Inspect one business/schema
+    │   ├── make_synthetic.py          # Generate synthetic development fixtures
+    │   ├── run.py                     # Main inference/orchestration entry point
+    │   └── serve_vllm.sh              # Start the vLLM model server
+    ├── submissions/
+    │   └── public_test_round1.jsonl   # Public-test submission snapshot
+    └── tests/
+        ├── conftest.py                # Shared pytest fixtures
+        ├── test_pipeline.py           # End-to-end/pipeline tests
+        └── test_units.py               # Unit tests
 ```
+
+**Data note:** The tracked tree does not include the challenge input-data directories. Prepare or mount those files locally using [Data Layout](datamate-agent/docs/DATA_LAYOUT.md); their absence from this listing does not mean the loader lacks CSV, Excel, or SQLite support.
 
 ## Quick check
 
