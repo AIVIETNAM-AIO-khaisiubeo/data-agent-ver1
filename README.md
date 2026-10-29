@@ -23,8 +23,8 @@ flowchart TD
     D["Shop files: CSV / Excel / SQLite"] --> C["Data loader"]
     R["Rulebook + calendar"] --> E["Rules and time context"]
     C --> F["DuckDB tables"]
-    F --> G["Semantic layer"]
-    G["Column roles + standardized views"] --> H["Question understanding"]
+    F --> G["Semantic layer: column roles + standardized views"]
+    G --> H["Question understanding"]
     B --> H
     E --> H
     H["Normalize text · infer intent · resolve time and values"] --> I["Candidate generation"]
