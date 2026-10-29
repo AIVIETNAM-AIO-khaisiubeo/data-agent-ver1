@@ -22,11 +22,11 @@
 
 ## 1. Metric and evaluation setup
 
-Penalized Accuracy (PA) assigns (+1) to a correct answer, (-1) to an incorrect answer, and (0) to abstention. For (N) labeled questions:
+Penalized Accuracy (PA) assigns +1 to a correct answer, −1 to an incorrect answer, and 0 to abstention. For N labeled questions:
 
-[
+$
 \mathrm{PA}=\frac{N_{\mathrm{correct}}-N_{\mathrm{wrong}}}{N}
-]
+$
 
 Consequently, abstentions remain in the denominator. Returning fewer answers can be beneficial when it prevents sufficiently risky guesses, but excessive abstention also limits PA.
 
@@ -44,7 +44,7 @@ The recorded train scores were computed with the local scoring implementation in
 | v6 — product/customer groups, name-to-code lookup, customer tier | 2,666 | 5 | 329 | 0.887 |
 | **v6 through `run.py` with the offline calibrator** | **2,667** | **3** | **330** | **0.888** |
 
-The final row's PA is ((2{,}667-3)/3{,}000=0.888). It corresponds to 89.0% non-abstention coverage and approximately 99.9% accuracy among the answers emitted in that recorded run.
+The final row's PA is $\mathrm{PA}=(2,667-3)/3,000=0.888$. It corresponds to 89.0% non-abstention coverage and approximately 99.9% accuracy among the answers emitted in that recorded run.
 
 ### How to interpret this result
 
