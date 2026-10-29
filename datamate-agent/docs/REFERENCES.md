@@ -1,6 +1,8 @@
 # Research References
 
-Reference labels such as `[R1]` are cited in [`docs/DESIGN.md`](DESIGN.md) and in relevant source-code docstrings. Titles are preserved in their publication language when needed for bibliographic accuracy.
+Reference labels such as `[R1]` are cited in [Detailed Design](DESIGN.md) and relevant source-code docstrings. Titles are preserved in their publication language when needed for bibliographic accuracy.
+
+**Related documentation:** [README and reading map](../../README.md) · [System Design Overview](../../DESIGN.md) · [Getting Started](../GETTING_STARTED.md) · [Evaluation Results](RESULTS.md).
 
 ## Contents
 
