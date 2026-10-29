@@ -5,7 +5,7 @@
 
 ## Documentation guide
 
-This is the **only repository README** and the main entry point. Follow the guides below in order depending on what you need.
+
 
 | If you want to… | Read |
 |---|---|
