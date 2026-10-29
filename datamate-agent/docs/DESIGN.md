@@ -317,4 +317,6 @@ Variants can be selected with `--set` overrides to `scripts/run.py`; for example
 
 ## 8. References
 
-Research citations used throughout this document are listed in [`REFERENCES.md`](REFERENCES.md). The reference labels are stable identifiers used in both this document and source-code docstrings.
+Research citations used throughout this document are listed in [References](REFERENCES.md); the labels are stable identifiers also used in source-code docstrings.
+
+**Continue reading:** [Getting Started](../GETTING_STARTED.md) for setup and run commands · [Data Layout](DATA_LAYOUT.md) for split structure · [Evaluation Results](RESULTS.md) for measured outcomes and limitations.
