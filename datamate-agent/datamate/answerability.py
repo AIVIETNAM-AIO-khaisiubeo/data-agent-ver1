@@ -25,7 +25,14 @@ NEEDS = [  # (question regex, roles or column-name regex that must exist with da
     (r"gioi tinh|\bkhach (hang )?(la )?(nu|nam|phu nu|dan ong|dan ba)\b|\b(nu|nam) gioi\b|(bao nhieu|may) (khach )?(phu nu|dan ong)",
      None, r"gioi tinh|nam nu|gender|sex", "giới tính khách"),
     (r"dia chi|nha o|\b(o|tai|khach|pho) duong\b|khach (o )?quan \d", "address", r"dia chi|addr", "địa chỉ khách"),
-    (r"\bvi (loi|mua nham|giao tre|hong|het hang|doi y)|ly do", None, r"ly do|nguyen nhan|reason", "lý do huỷ/trả"),
+         (
+        r"\bvi (?:loi|mua nham|giao tre|hong|het hang|doi y)\b|"
+        r"\b(?:ly do|nguyen nhan)\b.{0,40}\b(?:huy don|tra hang|tra lai|hoan tra)\b|"
+        r"\b(?:huy don|tra hang|tra lai|hoan tra)\b.{0,40}\b(?:ly do|nguyen nhan)\b",
+        None,
+        r"ly do|nguyen nhan|reason",
+        "lý do huỷ/trả",
+    ),
     (r"tien mat|chuyen khoan|vi dien tu|\bcod\b|quet the|hinh thuc thanh toan|tra bang", "payment", None, "hình thức thanh toán"),
     (r"zalo|tai quay|tai tiem|qua dien thoai|san tmdt|shopee|lazada|tiktok|online|kenh ban|giao di|grab", "channel", None, "kênh bán"),
     (r"nhom khach|khach (than thiet|si|vip|thanh vien)", "customer_group", None, "nhóm khách"),
