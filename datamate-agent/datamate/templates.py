@@ -903,10 +903,48 @@ def t_import_avg_price(c: Ctx):
     m = P["product_name"].map(lambda x: fold(x) == v if isinstance(x, str) else False) | \
         P["product_code"].map(lambda x: fold(x) == v if isinstance(x, str) else False)
     P = P[m & P["qty"].notna() & (P["qty"] > 0)]
+    
     if P.empty or (P["unit"].notna().any() and P["unit"].map(fold).nunique() > 1):
         return None
-    tot = P["amount"] if P["amount"].notna().all() else P["qty"] * P["price"]
-    return TemplateResult("import_avg_price", ("number", money(tot.sum() / P["qty"].sum())), 0.75, f"{link.value} {p.label}")
+
+    qty = pd.to_numeric(P["qty"], errors="coerce")
+    amount = pd.to_numeric(P["amount"], errors="coerce")
+    price = pd.to_numeric(P["price"], errors="coerce")
+
+    # Use amount when available; otherwise calculate from qty * price.
+    # Never treat missing monetary data as zero.
+    line_total = amount.where(amount.notna(), qty * price)
+
+    valid = (
+        qty.notna()
+        & (qty > 0)
+        & line_total.notna()
+        & np.isfinite(line_total)
+    )
+
+    # Reject the entire result if any matching purchase row lacks
+    # sufficient monetary information.
+    if not valid.all():
+        return None
+
+    total_qty = qty.sum()
+    total_amount = line_total.sum()
+
+    if not np.isfinite(total_qty) or total_qty <= 0:
+        return None
+
+    avg = total_amount / total_qty
+
+    if not np.isfinite(avg):
+        return None
+
+    return TemplateResult(
+        "import_avg_price",
+        ("number", money(avg)),
+        0.75,
+        f"{link.value} {p.label}"
+    )
+    
 
 
 def t_top_supplier(c: Ctx):
