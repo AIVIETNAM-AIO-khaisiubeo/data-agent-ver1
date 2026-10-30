@@ -248,13 +248,13 @@ def _filtered_lines_and_orders(c: Ctx, p):
     if spec.group_name:
         if L is None or L["product_group"].isna().all():
             return None, None, "no product group column", False, None
-        gm = _match_value(L["product_group"], spec.group_name)
+        group_link, _ = resolve_entity(c.links, ("product_group",), min_score=90)
+        group_value = (group_link.value if group_link is not None else spec.group_name)
+        gm = _match_value(L["product_group"], group_value)
         if not gm.any():
-            allg = c.L["product_group"].dropna().unique()
-            if not any(fold(spec.group_name) == fold(g) or fold(g) in fold(spec.group_name) for g in allg):
-                return None, None, f"group '{spec.group_name}' not found", False, None
+            return None, None, f"group '{group_value}' not found", False, None
         L = L[gm]
-        desc.append(f"group={spec.group_name}")
+        desc.append(f"group={group_value}")
         level = "line"
     if spec.cust_group:
         if O["customer_group"].isna().all():
