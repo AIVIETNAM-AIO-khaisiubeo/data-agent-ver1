@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 
 from .loader import name_key
+from .textnorm import expand_abbr, fold
 
 SUBJECTIVE = r"lanh nghe|tan tam|le phep|chu dao|quy men|hay khen|tay nghe|nhiet tinh|than thien|vui ve|de thuong|" \
              r"uy tin|tot bung|chuyen nghiep|lich su|dep|xinh|nen uong|lieu dung|cach dung|uong moi lan|tac dung phu|" \
@@ -52,7 +53,8 @@ def evidence(biz, sm, spec, tctx, item_linked, data_lo, data_hi, links=()) -> li
     # words inside a named item are not requests ("Giò heo" is not "giờ", "Bay thợ hồ" is not a staff member)
     for l in links:
         if (l.role or "").startswith("product_") and l.score >= 95 and len(l.span.split()) >= 2:
-            q = q.replace(l.span, " ")
+            span = fold(expand_abbr(l.span))
+            q = q.replace(span, " ")
     ev = []
     if re.search(SUBJECTIVE, q):
         ev.append(("strong", "câu hỏi chủ quan / ngoài dữ liệu bán hàng"))

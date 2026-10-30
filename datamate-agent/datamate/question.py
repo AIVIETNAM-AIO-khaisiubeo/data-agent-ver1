@@ -227,7 +227,15 @@ def analyze(question: str) -> QSpec:
         units = r"(ly|lon|chai|hop|goi|vien|dia|binh|cai|phan|cay|bao|kg|vi|tuyp|bich|thung|cuon|m3|bo|chiec|lo|suat|to|tan|tam|lit|ong|noi|o)"
         m = re.search(rf"\b(?:bao nhieu|may|tong so|so|tong cong|nhieu)\s+{units}\b(?! nhieu)", q)
         s.unit_word = m.group(1) if m else None
-    elif not purchase and has(r"doanh thu|ban (duoc|ra)? ?(bao nhieu|bn|nhieu|may) tien|thu (duoc|ve)( bao nhieu)? tien|tien (hang|ban)|bao nhieu tien|ban duoc bao nhieu$"):
+    elif not purchase and has(
+        r"doanh thu|"
+        r"ban.{0,100}\bduoc (?:bao )?(?:nhieu|may) tien|"
+        r"ban (duoc|ra)? ?(bao nhieu|bn|nhieu|may) tien|"
+        r"thu (duoc|ve)( bao nhieu)? tien|"
+        r"tien (hang|ban)|"
+        r"bao nhieu tien|"
+        r"ban duoc bao nhieu$"
+    ):
         s.intent, s.answer_type, s.metric = "revenue", "number", "revenue"
         if pct:
             s.intent, s.answer_type = "share", "percent"
