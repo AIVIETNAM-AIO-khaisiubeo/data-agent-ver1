@@ -28,4 +28,4 @@ jobs:
       - name: Run unit and synthetic pipeline tests
         run: python -m pytest -q tests
       - name: Syntax check training-policy utility
-        run: python -m py_compile scripts/sweep_policy.py scripts/run.py datamate/agent.py
+        run: python -m py_compile scripts/sweep_policy.py scripts/diagnose_train.py scripts/run.py datamate/agent.py
