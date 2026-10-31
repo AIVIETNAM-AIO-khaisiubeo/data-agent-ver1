@@ -123,14 +123,19 @@ def format_answer(result, atype: str, month_answer: bool = False):
             return ("table", {"columns": [str(c) for c in df.columns], "rows": []})
         return ("table", {"columns": [str(c) for c in df.columns],
                           "rows": [[_cell(v) for v in r] for r in df.itertuples(index=False)]})
-    if df.empty:
+    if df.empty or len(df) != 1:
+        # Scalar answers are ONE result row, not the first row of an accidentally
+        # unbounded ranking/grouping query. Silent truncation is a PA liability.
         return None
     row = df.iloc[0]
     if atype in ("number", "percent"):
-        if len(df) > 1 and len(df.columns) == 1:
-            return None                       # ambiguous: many rows for a scalar question
-        nums = [c for c in df.columns if _is_num_col(df[c])] or list(df.columns)
-        v = _num(row[nums[-1]] if len(nums) > 1 and len(df.columns) > 1 else row[nums[0]])
+        nums = [c for c in df.columns if _is_num_col(df[c])]
+        # A metric in a named row is fine; choosing arbitrarily between two
+        # numeric aggregations is not. LLM repair can emit a single metric.
+        if len(nums) > 1:
+            return None
+        col = nums[0] if nums else (df.columns[0] if len(df.columns) == 1 else None)
+        v = _num(row[col]) if col is not None else None
         return None if v is None else (atype, v)
     if atype == "boolean":
         v = row.iloc[0]
