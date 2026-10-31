@@ -7,6 +7,8 @@
 #   MODEL_DIR  (default /models/Qwen3-14B)   local weights, served by vLLM on both GPUs (TP=2)
 #   NO_LLM=1   answer with templates + rules only (no GPU needed)
 set -euo pipefail
+STARTED_AT=$(date +%s)  # Rule 7 wall-clock includes loading model weights
+MAX_WALL_SECONDS=${MAX_WALL_SECONDS:-21600}
 DATA_DIR=${DATA_DIR:-/data}
 RESULT_DIR=${RESULT_DIR:-/result}
 MODEL_DIR=${MODEL_DIR:-/models/Qwen3-14B}
@@ -27,12 +29,29 @@ else
       --gpu-memory-utilization 0.90 --seed 0 > "$RESULT_DIR/logs/vllm.log" 2>&1 &
   VLLM_PID=$!
   trap 'kill $VLLM_PID 2>/dev/null || true' EXIT
+  READY=0
   for i in $(seq 1 600); do
-    if curl -sf "http://127.0.0.1:$PORT/v1/models" > /dev/null; then break; fi
+    if curl -sf "http://127.0.0.1:$PORT/v1/models" > /dev/null; then READY=1; break; fi
     sleep 2
   done
-  EXTRA+=(--set "llm.base_url=http://127.0.0.1:$PORT/v1" --set "llm.main_model=$MODEL_NAME")
+  if [[ "$READY" == "1" ]]; then
+    EXTRA+=(--set "llm.base_url=http://127.0.0.1:$PORT/v1" --set "llm.main_model=$MODEL_NAME")
+  else
+    echo "[datamate] model server failed to become ready; falling back to offline templates" >&2
+    kill "$VLLM_PID" 2>/dev/null || true
+    EXTRA+=(--set llm.backend=none)
+  fi
 fi
 
+# Reserve 5 minutes for flushing output and shutdown. Count model startup time.
+ELAPSED=$(( $(date +%s) - STARTED_AT ))
+REMAINING=$(( MAX_WALL_SECONDS - ELAPSED - 300 ))
+if (( REMAINING < 1 )); then REMAINING=1; fi
+RUN_BUDGET=$(( REMAINING < 20700 ? REMAINING : 20700 ))
+FAST_AFTER=$(( RUN_BUDGET - 600 ))
+if (( FAST_AFTER > 18000 )); then FAST_AFTER=18000; fi
+if (( FAST_AFTER < 0 )); then FAST_AFTER=0; fi
+echo "[datamate] model startup ${ELAPSED}s, inference budget ${RUN_BUDGET}s, fast fallback after ${FAST_AFTER}s" >&2
 python "$HERE/scripts/run.py" --data "$DATA_DIR" --out "$RESULT_DIR/submission.jsonl" \
-    --logs "$RESULT_DIR/logs" --set "data.cache_dir=$CACHE_DIR" "${EXTRA[@]}"
+    --logs "$RESULT_DIR/logs" --set "data.cache_dir=$CACHE_DIR" \
+    --set "run.time_budget_s=$RUN_BUDGET" --set "run.fast_after_s=$FAST_AFTER" "${EXTRA[@]}"
