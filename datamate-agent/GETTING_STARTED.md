@@ -171,8 +171,11 @@ Inspect `scripts/run.py` and `datamate/agent.py` before changing inference behav
 The PA metric rewards correct answers (+1), penalizes incorrect ones (-1), and
 gives zero for `abstain`. A rule of thumb is to answer only when the estimated
 probability of being correct is above 0.5 **after calibration on held-out
-training businesses**. The default `decision.min_template_strength=0.45` is
-a conservative starting point, *not an empirically optimized number*.
+training businesses**. The default is now `decision.min_template_strength=0.0` (**disabled**) because
+an actual 3,000-question TRAIN run at 0.45 dropped from PA 0.888 to 0.825:
+correct 2,475, wrong 0, abstain 525. The previous train run had
+correct 2,667, wrong 3, abstain 330. These are **in-sample** figures;
+no new public-test PA has been measured.
 
 This branch adds three inference safeguards:
 
@@ -182,9 +185,9 @@ This branch adds three inference safeguards:
 2. Scalar answer types must come from one result row. Numeric outputs must
    also have an unambiguous numeric column; otherwise the execution-feedback
    repair path receives a format failure.
-3. Low-strength template-only answers abstain rather than relying on the
-   uniform offline prior. An unsupported LLM-only `unanswerable` answer
-   requires independent confirmation or positive deterministic evidence.
+3. A **configurable, disabled-by-default** low-strength template gate is
+   available for calibrated deployments. An unsupported LLM-only
+   `unanswerable` answer requires independent confirmation or positive evidence.
 
 ### Train-only grouped PA threshold study
 
@@ -199,6 +202,8 @@ python scripts/run.py --data /path/to/train --out runs/train.jsonl \
 
 python scripts/sweep_policy.py runs/train_dump.jsonl \
   /path/to/train/answers.jsonl --folds 5 \
+  --calibrator artifacts/calibrator_offline.pkl \
+  --submitted runs/train.jsonl \
   --out runs/train_business_grouped_pa.json
 ```
 
@@ -208,8 +213,9 @@ training folds** and measures it on *other* businesses, then reports the
 median selected threshold. Re-test after changing the agent: grouped threshold
 selection alone does not remove earlier template-development leakage.
 
-The grouped PA report compares unfiltered candidates, the new default
-threshold, and a train-only fold-selected threshold. It never inspects
+The grouped PA report **replays the complete PA decision** from the saved
+candidate features using the original calibrator; it does not require another
+inference run. It compares 0.00 vs 0.45 thresholds and a fold-selected threshold. It never inspects
 public/private reference answers. Set `--set decision.min_template_strength=X`
 after inspecting train-held-out behavior. Keep the official public-test
 leaderboard for occasional verification only, not as a training target.
@@ -219,3 +225,20 @@ LLM-enabled validation additionally needs an offline Qwen3-14B checkpoint,
 a compatible GPU/vLLM stack, and freshly fitted calibration traces from
 that same inference configuration. A local template-only run cannot establish
 the accuracy of the LLM-enabled agent.
+
+### Diagnose remaining TRAIN abstentions by intent and type
+
+Use the previously saved predictions, candidate dump, and per-question logs:
+
+```bash
+python scripts/diagnose_train.py \
+  --split /path/to/train --submission runs/train.jsonl \
+  --dump runs/train_dump.jsonl --logs runs/train_logs \
+  --show 25 --out runs/train_misses.json
+```
+
+The JSON report groups missing answers by reference type and classified
+intent, separating absent candidates from candidates rejected by a decision
+policy. Inspect these summaries *before* adding templates for stock, debt,
+expiry, boolean, or table questions. Do not use PUBLIC/PRIVATE test labels
+for feature selection, hard-coded answers, or threshold fitting.
