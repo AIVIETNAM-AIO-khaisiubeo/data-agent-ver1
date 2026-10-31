@@ -154,3 +154,24 @@ For all run modes and submission instructions, continue to [Getting Started](dat
 ## Reporting principles
 
 Keep template-only, simulated-LLM, and real-LLM results separate. Record the model, configuration, split, seed policy, runtime, submission, and per-question logs. Do not claim a public-test score without the corresponding ground truth and official scoring procedure.
+
+## PA-oriented improvements (2026-10-31)
+
+The competition owner reported an official public PA baseline of **0.40900**
+for an earlier run. The source repository does not contain the official
+train/test data packages or public reference labels, and this score has
+not been independently reproduced. The historical template-only train
+numbers above remain **in-sample**, not estimates for unseen businesses.
+
+On `feature/inventory-support`, the updated agent now requires independent
+generator-family confirmation before early exit without a supporting
+template, escalates through additional agent families only as needed, rejects
+ambiguous scalar query results, guards unsupported `unanswerable` guesses,
+and abstains from weak template-only answers by configurable strength.
+
+To evaluate and tune PA on **labeled train only**, see
+[Getting Started: PA-focused validation](datamate-agent/GETTING_STARTED.md#10-pa-focused-validation-2026-10-31).
+The command `make sweep DATA=/path/to/train OUT=runs` uses a candidate
+dump in `runs/dump_offline.jsonl` and reports grouped business-held-out
+threshold performance. Do not infer a new public PA until the revised
+`submission.jsonl` has been run and scored by the organizers.
