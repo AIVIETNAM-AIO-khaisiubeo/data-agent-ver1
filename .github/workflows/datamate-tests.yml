@@ -1,0 +1,31 @@
+name: DataMate Python regression tests
+
+on:
+  push:
+    branches: [feature/inventory-support]
+  pull_request:
+    branches: [main, feature/inventory-support]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: datamate-agent
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: datamate-agent/requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run unit and synthetic pipeline tests
+        run: python -m pytest -q tests
+      - name: Syntax check training-policy utility
+        run: python -m py_compile scripts/sweep_policy.py scripts/run.py datamate/agent.py
