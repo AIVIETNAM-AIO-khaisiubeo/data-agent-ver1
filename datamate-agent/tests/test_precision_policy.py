@@ -58,3 +58,22 @@ def test_llm_unanswerable_needs_independent_evidence():
     pred, _ = a._select(sql_ua + [Candidate("rule", ua=True)], spec, [], [("strong", "missing column")],
                         [], tctx, ctx, False)
     assert pred["type"] == "unanswerable"
+
+
+def test_pa_default_does_not_repeat_unvalidated_strength_gate():
+    from datamate.config import load_config
+    cfg = load_config()
+    assert cfg["decision"]["min_template_strength"] == 0.0
+
+
+def test_replay_recovers_low_strength_valid_template():
+    from scripts.sweep_policy import replay
+    cal = Calibrator(offline_template_prior=0.75)
+    row = {"pred": {"type": "number", "answer": 29},
+           "feats": {"tpl_agree": 1.0, "tpl_strength": 0.20, "llm_used": 0.0}}
+    assert replay(row, 0.45, cal)["type"] == "abstain"
+    assert replay(row, 0.0, cal) == {"type": "number", "answer": 29}
+    # The stored 0.49 probability from the old decision must not override
+    # a fresh recalibration of the candidate under the new policy.
+    row["p"] = 0.49
+    assert replay(row, 0.0, cal)["type"] == "number"
