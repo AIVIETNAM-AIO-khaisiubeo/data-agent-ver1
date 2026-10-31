@@ -89,6 +89,39 @@ python scripts/run.py \
 
 This mode has lower coverage for questions outside the supported deterministic templates. Refer to [Evaluation Results](docs/RESULTS.md) for its measured performance and limitations.
 
+
+## 5.1 Round 1 local run (CPU / no LLM)
+
+On a machine without a supported inference GPU, run the deterministic templates-and-rules path:
+
+```powershell
+.\scripts\run_round1_local.ps1
+```
+
+The script defaults to `../official_data/public_test`, disables the LLM, writes `submission.jsonl`,
+records a diagnostic dump under `artifacts/`, and validates exact question-ID coverage. You can
+override the data folder, output path, worker count, and local wall-clock budget:
+
+```powershell
+.\scripts\run_round1_local.ps1 -DataPath "..\official_data\public_test" -Workers 2 -TimeBudgetSeconds 86400
+```
+
+The local CPU profile is a development submission, not a substitute for the final competition
+Docker inference profile. Do not use public-test labels (which are not provided) for fitting or
+threshold selection. Calibration must use labeled training data only.
+
+To inspect or fit calibration using the labeled output of `eval_templates.py`:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\fit_calibrator.py `
+    .\artifacts\train_eval_commit6.jsonl `
+    --out .\artifacts\calibrator_round1_offline.pkl `
+    --offline-prior 0.75
+```
+
+When all candidate labels have the same value, the script saves a prior-only calibrator and reports
+that a discriminative calibration cannot be learned; it does not invent incorrect examples.
+
 ## 6. Evaluate a labeled split
 
 To evaluate deterministic templates and calculate PA:

@@ -214,20 +214,34 @@ def analyze(question: str) -> QSpec:
         s.answer_type = "list" if (s.k or 1) > 1 or has(r"nhung (mat hang|san pham|mon)|liet ke") else "string"
     elif has(r"(khong ban|chua ban) (duoc|ra)|bi e\b|\bhang e\b|\bmat hang e\b|khong ban duoc lan nao") and has(r"bao nhieu|may|so|dem"):
         s.intent, s.answer_type = "n_unsold_items", "number"
-    elif has(r"so ly size|ly size|size [ml]") and has(r"bao nhieu|may|so"):
+    elif has(r"so ly size|ly size|size [ml]") and has(r"bao nhieu|nhieu|may|so"):
         s.intent, s.answer_type = "qty_size", "number"
     elif has(r"(bao nhieu|may|so|dem) (khach|nguoi mua)") and not has(r"\bno\b"):
         s.intent, s.answer_type = "n_customers", "number"
     elif has(r"(bao nhieu|may|so|tong|dem) (don|hoa don|bill|don hang)") or has(r"\bso don\b"):
         s.intent, s.answer_type = "n_orders", "number"
-    elif has(r"ban (duoc|ra)? ?(bao nhieu|may|tong cong bao nhieu|tong cong may) (ly|lon|chai|hop|goi|vien|dia|binh|cai|phan|cay|bao|kg|vi|tuyp|bich|thung|cuon|m3|bo|chiec|lo|suat|to|tan|tam|vien nang|goi|o|ky|lit)\b") \
-            or has(r"\bso (ly|lon|chai|hop|goi|vien|dia|binh|cai|phan|cay|bao|kg|vi|tuyp|bich|thung|cuon) .{0,60}ban (duoc|ra)") \
-            or has(r"tong so (ly|lon|chai|hop|goi|vien|dia|binh|cai|phan|cay|bao|kg|vi|tuyp|bich|thung|cuon)"):
+    elif ( 
+        has(
+            r"ban (?:(?:duoc|ra) ){0,2}"
+            r"(?:bao nhieu|nhieu|may|tong bao nhieu|tong cong bao nhieu|tong cong may) "
+            r"(ly|lon|chai|hop|goi|vien|dia|binh|cai|phan|cay|bao|kg|vi|tuyp|bich|thung|cuon|m3|bo|chiec|lo|suat|to|tan|tam|vien nang|o|ky|lit|cuc)\b"
+        ) 
+        or has(r"\bso (ly|lon|chai|hop|goi|vien|dia|binh|cai|phan|cay|bao|kg|vi|tuyp|bich|thung|cuon) .{0,60}ban (duoc|ra)")
+        or has(r"tong so (ly|lon|chai|hop|goi|vien|dia|binh|cai|phan|bao|kg|vi|tuyp|bich|thung|cuon)")
+    ) and not has(r"\bly size [ml]\b|size [ml]"): 
         s.intent, s.answer_type = "qty", "number"
-        units = r"(ly|lon|chai|hop|goi|vien|dia|binh|cai|phan|cay|bao|kg|vi|tuyp|bich|thung|cuon|m3|bo|chiec|lo|suat|to|tan|tam|lit|ong|noi|o)"
+        units = r"(ly|lon|chai|hop|goi|vien|dia|binh|cai|phan|cay|bao|kg|vi|tuyp|bich|thung|cuon|m3|bo|chiec|lo|suat|to|tan|tam|lit|ong|noi|o|cuc)"
         m = re.search(rf"\b(?:bao nhieu|may|tong so|so|tong cong|nhieu)\s+{units}\b(?! nhieu)", q)
-        s.unit_word = m.group(1) if m else None
-    elif not purchase and has(r"doanh thu|ban (duoc|ra)? ?(bao nhieu|bn|nhieu|may) tien|thu (duoc|ve)( bao nhieu)? tien|tien (hang|ban)|bao nhieu tien|ban duoc bao nhieu$"):
+        s.unit_word = m.group(1) if m else None 
+    elif not purchase and has(
+        r"doanh thu|"
+        r"ban.{0,100}\bduoc (?:bao )?(?:nhieu|may) tien|"
+        r"ban (duoc|ra)? ?(bao nhieu|bn|nhieu|may) tien|"
+        r"thu (?:duoc|ve)(?: (?:bao )?(?:nhieu|may))? tien|"
+        r"tien (hang|ban)|"
+        r"bao nhieu tien|"
+        r"ban duoc bao nhieu$"
+    ):
         s.intent, s.answer_type, s.metric = "revenue", "number", "revenue"
         if pct:
             s.intent, s.answer_type = "share", "percent"

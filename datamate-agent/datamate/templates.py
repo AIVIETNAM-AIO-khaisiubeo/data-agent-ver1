@@ -25,7 +25,7 @@ import pandas as pd
 from .attributes import ProductAttributes, _norm as _anorm
 from .linker import resolve_entity
 from .question import VOCAB, QSpec, unexplained_tokens
-from .textnorm import fold
+from .textnorm import fold, metric_norm
 
 DAY = timedelta(days=1)
 
@@ -248,13 +248,13 @@ def _filtered_lines_and_orders(c: Ctx, p):
     if spec.group_name:
         if L is None or L["product_group"].isna().all():
             return None, None, "no product group column", False, None
-        gm = _match_value(L["product_group"], spec.group_name)
+        group_link, _ = resolve_entity(c.links, ("product_group",), min_score=90)
+        group_value = (group_link.value if group_link is not None else spec.group_name)
+        gm = _match_value(L["product_group"], group_value)
         if not gm.any():
-            allg = c.L["product_group"].dropna().unique()
-            if not any(fold(spec.group_name) == fold(g) or fold(g) in fold(spec.group_name) for g in allg):
-                return None, None, f"group '{spec.group_name}' not found", False, None
+            return None, None, f"group '{group_value}' not found", False, None
         L = L[gm]
-        desc.append(f"group={spec.group_name}")
+        desc.append(f"group={group_value}")
         level = "line"
     if spec.cust_group:
         if O["customer_group"].isna().all():
@@ -569,9 +569,42 @@ def t_top_items(c: Ctx):
         return None
     metric = "amount" if c.spec.metric == "revenue" else "qty_base"
     k = c.spec.k or 1
-    names = L.groupby("product_code")["product_name"].first()
-    g, tie = _rank(L, "product_code", metric, k, c.spec.ascending, "product_code")
-    out = [str(names.get(cd, cd)) for cd in g["product_code"]]
+
+
+    L = L.copy()
+
+    name_norm = L["product_name"].fillna("").map(metric_norm)
+    code_norm = L["product_code"].fillna("").map(metric_norm)
+
+
+    synthetic_code = code_norm.eq("") | code_norm.eq(name_norm)
+
+    L["_top_item_key"] = np.where(
+        synthetic_code,
+        "name:" + name_norm,
+        "code:" + L["product_code"].fillna("").astype(str).str.strip(),
+    )
+
+    L = L[name_norm.ne("")]
+    if L.empty:
+        return None
+
+
+    names = L.groupby("_top_item_key")["product_name"].agg(
+        lambda x: x.dropna().astype(str).value_counts().index[0]
+    )
+
+    g, tie = _rank(
+        L,
+        "_top_item_key",
+        metric,
+        k,
+        c.spec.ascending,
+        "_top_item_key",
+    )
+
+    out = [str(names.get(key, key)) for key in g["_top_item_key"]]
+
     s = 0.85 * (0.35 if tie else 1.0)
     if c.spec.answer_type == "string":
         return TemplateResult("top_items", ("string", out[0]), s, f"{p.label} by {metric}")
@@ -903,10 +936,48 @@ def t_import_avg_price(c: Ctx):
     m = P["product_name"].map(lambda x: fold(x) == v if isinstance(x, str) else False) | \
         P["product_code"].map(lambda x: fold(x) == v if isinstance(x, str) else False)
     P = P[m & P["qty"].notna() & (P["qty"] > 0)]
+
     if P.empty or (P["unit"].notna().any() and P["unit"].map(fold).nunique() > 1):
         return None
-    tot = P["amount"] if P["amount"].notna().all() else P["qty"] * P["price"]
-    return TemplateResult("import_avg_price", ("number", money(tot.sum() / P["qty"].sum())), 0.75, f"{link.value} {p.label}")
+
+    qty = pd.to_numeric(P["qty"], errors="coerce")
+    amount = pd.to_numeric(P["amount"], errors="coerce")
+    price = pd.to_numeric(P["price"], errors="coerce")
+
+    # Use amount when available; otherwise calculate from qty * price.
+    # Never treat missing monetary data as zero.
+    line_total = amount.where(amount.notna(), qty * price)
+
+    valid = (
+        qty.notna()
+        & (qty > 0)
+        & line_total.notna()
+        & np.isfinite(line_total)
+    )
+
+    # Reject the entire result if any matching purchase row lacks
+    # sufficient monetary information.
+    if not valid.all():
+        return None
+
+    total_qty = qty.sum()
+    total_amount = line_total.sum()
+
+    if not np.isfinite(total_qty) or total_qty <= 0:
+        return None
+
+    avg = total_amount / total_qty
+
+    if not np.isfinite(avg):
+        return None
+
+    return TemplateResult(
+        "import_avg_price",
+        ("number", money(avg)),
+        0.75,
+        f"{link.value} {p.label}"
+    )
+
 
 
 def t_top_supplier(c: Ctx):

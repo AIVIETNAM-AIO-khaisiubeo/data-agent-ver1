@@ -315,11 +315,15 @@ class Agent:
                 escalated = True
                 cands += self._gen(ctx, "sql_plan", SQL_PLAN, user, int(self.A.get("n_plan", 2)), spec, tctx, item,
                                    temperature=0.5)
-                cands += self._gen(ctx, "py", PYTHON, user, int(self.A.get("n_py", 2)), spec, tctx, item)
-                if self.sql_llm is not None:
+                # Escalate in stages: independent plan->SQL confirmation can
+                # avoid more expensive Python execution and ReAct probes.
+                if not self._agreed(cands):
+                    cands += self._gen(ctx, "py", PYTHON, user, int(self.A.get("n_py", 2)), spec, tctx, item)
+                if not self._agreed(cands) and self.sql_llm is not None:
                     cands += self._gen(ctx, "sql2", SQL_DIRECT, user, int(self.A.get("n_sql_model", 2)), spec, tctx,
                                        item, llm=self.sql_llm)
-                cands += self._react(ctx, user, spec, tctx, item)
+                if not self._agreed(cands):
+                    cands += self._react(ctx, user, spec, tctx, item)
 
         pred, feats = self._select(cands, spec, tpl, ev, links, tctx, ctx, escalated)
         if self.llm is not None and not fast and feats.get("_needs_judge") and self.A.get("use_judge", True):
@@ -336,15 +340,26 @@ class Agent:
         return pred, feats, trace
 
     def _agreed(self, cands) -> bool:
+        """Early-exit needs independent corroboration, not repeated SQL samples.
+
+        Three completions from one prompt/model are correlated and should not
+        suppress the independent planning/Python families on unseen schemas.
+        """
         need = int(self.A.get("early_exit_agree", 3))
-        llm_keys = [c.key for c in cands if c.family.startswith("sql") and c.key is not None]
-        if not llm_keys:
+        llm_c = [c for c in cands if not c.family.startswith(("tpl:", "rule")) and c.key is not None]
+        if len(llm_c) < need:
             return False
-        top = max(set(llm_keys), key=llm_keys.count)
-        if llm_keys.count(top) < need:
+        keys = [c.key for c in llm_c]
+        top = max(set(keys), key=lambda k: (keys.count(k), str(k)))
+        if keys.count(top) < need:
             return False
-        tpl_keys = [c.key for c in cands if c.family.startswith(("tpl:", "rule"))]
-        return not tpl_keys or top in tpl_keys
+        tpl_keys = [c.key for c in cands if c.family.startswith(("tpl:", "rule")) and c.key is not None]
+        if tpl_keys:
+            return top in tpl_keys
+        if not self.A.get("early_exit_cross_family", True):
+            return True
+        agreeing_families = {c.family.split(":")[0].split("+")[0] for c in llm_c if c.key == top}
+        return len(agreeing_families) >= 2
 
     # ---------------------------------------------------------- selection --
     def _select(self, cands, spec, tpl, ev, links, tctx, ctx, escalated):
@@ -393,6 +408,13 @@ class Agent:
         f["_needs_judge"] = len(ranked) > 1 and abs(win_w - second) < 0.5 and not win.ua and ranked[1][0] != ("unanswerable",)
         f["_ranked"] = [(k, members[k]) for k, _ in ranked[:2]]
         if win.ua:
+            # A group of identical LLM unanswerable guesses is not proof of
+            # absent data. Require deterministic evidence or another family.
+            if (self.A.get("ua_requires_cross_family", True) and not ev
+                    and not any(c.family.startswith("tpl:") and c.ua for c in members[win_key])
+                    and len(fams[win_key]) < 2):
+                f["ua_unverified"] = 1.0
+                return {"type": "abstain"}, f
             return {"type": "unanswerable"}, f
         return {"type": win.fa[0], "answer": win.fa[1]}, f
 
@@ -421,6 +443,13 @@ class Agent:
         D = self.cfg["decision"]
         feats.pop("_ranked", None)
         p = self.cal.p(feats) if self.cal else 0.0
+        # Low-strength templates commonly contain unresolved modifiers or
+        # unreliable view lineage. A constant offline prior must not make
+        # these guesses automatically worth the -1 wrong-answer risk.
+        if (pred.get("type") in ANSWER_TYPES and not feats.get("llm_used")
+                and feats.get("tpl_agree")
+                and float(feats.get("tpl_strength", 0.0)) < float(D.get("min_template_strength", 0.45))):
+            return {"type": "abstain"}, min(p, 0.49)
         if pred.get("type") == "unanswerable":
             if p > D.get("tau_unanswerable", 0.5):
                 out = {"type": "unanswerable"}

@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 
 from .loader import name_key
+from .textnorm import expand_abbr, fold
 
 SUBJECTIVE = r"lanh nghe|tan tam|le phep|chu dao|quy men|hay khen|tay nghe|nhiet tinh|than thien|vui ve|de thuong|" \
              r"uy tin|tot bung|chuyen nghiep|lich su|dep|xinh|nen uong|lieu dung|cach dung|uong moi lan|tac dung phu|" \
@@ -25,7 +26,14 @@ NEEDS = [  # (question regex, roles or column-name regex that must exist with da
     (r"gioi tinh|\bkhach (hang )?(la )?(nu|nam|phu nu|dan ong|dan ba)\b|\b(nu|nam) gioi\b|(bao nhieu|may) (khach )?(phu nu|dan ong)",
      None, r"gioi tinh|nam nu|gender|sex", "giới tính khách"),
     (r"dia chi|nha o|\b(o|tai|khach|pho) duong\b|khach (o )?quan \d", "address", r"dia chi|addr", "địa chỉ khách"),
-    (r"\bvi (loi|mua nham|giao tre|hong|het hang|doi y)|ly do", None, r"ly do|nguyen nhan|reason", "lý do huỷ/trả"),
+         (
+        r"\bvi (?:loi|mua nham|giao tre|hong|het hang|doi y)\b|"
+        r"\b(?:ly do|nguyen nhan)\b.{0,40}\b(?:huy don|tra hang|tra lai|hoan tra)\b|"
+        r"\b(?:huy don|tra hang|tra lai|hoan tra)\b.{0,40}\b(?:ly do|nguyen nhan)\b",
+        None,
+        r"ly do|nguyen nhan|reason",
+        "lý do huỷ/trả",
+    ),
     (r"tien mat|chuyen khoan|vi dien tu|\bcod\b|quet the|hinh thuc thanh toan|tra bang", "payment", None, "hình thức thanh toán"),
     (r"zalo|tai quay|tai tiem|qua dien thoai|san tmdt|shopee|lazada|tiktok|online|kenh ban|giao di|grab", "channel", None, "kênh bán"),
     (r"nhom khach|khach (than thiet|si|vip|thanh vien)", "customer_group", None, "nhóm khách"),
@@ -45,7 +53,8 @@ def evidence(biz, sm, spec, tctx, item_linked, data_lo, data_hi, links=()) -> li
     # words inside a named item are not requests ("Giò heo" is not "giờ", "Bay thợ hồ" is not a staff member)
     for l in links:
         if (l.role or "").startswith("product_") and l.score >= 95 and len(l.span.split()) >= 2:
-            q = q.replace(l.span, " ")
+            span = fold(expand_abbr(l.span))
+            q = q.replace(span, " ")
     ev = []
     if re.search(SUBJECTIVE, q):
         ev.append(("strong", "câu hỏi chủ quan / ngoài dữ liệu bán hàng"))

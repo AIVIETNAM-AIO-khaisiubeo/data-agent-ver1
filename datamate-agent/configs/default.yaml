@@ -42,7 +42,9 @@ agent:
   n_sql_model: 2              # escalation: samples from llm.sql_model if configured
   react_steps: 3              # escalation: ReAct data-exploration agent, max tool calls
   max_fix_rounds: 1           # execution-guided self-debugging rounds per candidate
-  early_exit_agree: 3         # stop after round 1 if this many candidates agree (and template agrees if fired)
+  early_exit_agree: 3         # minimum matching LLM candidates before any early exit
+  early_exit_cross_family: true # without a supporting template, require a second generator family
+  ua_requires_cross_family: true # unanswerable needs evidence or independent agent confirmation
   escalate_thinking: true
   use_judge: true             # one pairwise LLM judge call when the top-2 answer clusters are within 0.5 votes
   exec_timeout_s: 8
@@ -61,6 +63,7 @@ decision:
   tau_unanswerable: 0.5
   calibrator_path: artifacts/calibrator.pkl
   offline_template_prior: 0.75  # prior P(correct) of a fired template when no LLM family exists
+  min_template_strength: 0.45  # abstain on weak template-only answers; tune on held-out TRAIN businesses
 
 format:
   weekday_names: ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"]
