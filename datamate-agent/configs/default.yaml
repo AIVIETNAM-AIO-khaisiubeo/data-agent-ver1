@@ -63,7 +63,7 @@ decision:
   tau_unanswerable: 0.5
   calibrator_path: artifacts/calibrator.pkl
   offline_template_prior: 0.75  # prior P(correct) of a fired template when no LLM family exists
-  min_template_strength: 0.45  # abstain on weak template-only answers; tune on held-out TRAIN businesses
+  min_template_strength: 0.0   # OFF by default: 0.45 lost ~192 correct train answers; tune on held-out TRAIN businesses
 
 format:
   weekday_names: ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"]
