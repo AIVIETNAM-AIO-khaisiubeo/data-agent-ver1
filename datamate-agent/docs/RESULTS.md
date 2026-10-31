@@ -150,3 +150,24 @@ The per-question seed is derived from question text, the as-of date, and candida
 - They do not establish that the offline calibrator is valid for LLM-generated candidates. The calibrator must be re-fit on traces from the actual inference mode.
 
 For a reproducible report, record the split and checksum, model and serving configuration, configuration overrides, random seed policy, runtime, submission, and per-question logs. Keep template-only, simulated-LLM, and real-LLM results clearly separated.
+
+## 7. Public leaderboard baseline and new validation status (2026-10-31)
+
+The project owner reports **PA = 0.40900** on the official
+`public_test` leaderboard for a previous submission. This is an externally
+reported baseline, **not** a score reproduced from public ground truth.
+The 635 non-abstaining outputs above are a historical artifact and should
+not automatically be treated as the same submission that received 0.40900.
+
+New commits on `feature/inventory-support` add strict scalar-result
+formatting, independent-family early exit, staged agent escalation, an
+optional conservative unanswerable guard, and a weak-template abstention
+threshold. `scripts/sweep_policy.py` provides business-grouped TRAIN
+policy evaluation, and the Makefile now calls the supported runner CLI.
+
+**No new PA is claimed.** The complete train/public split data and benchmark
+outputs were not present in the Git repository when these changes were made,
+so end-to-end training, grouped PA measurement and a new official public
+submission still need to be run. A reduction in wrong answers alone is
+insufficient evidence of improvement if the number of correct answers also
+falls.
