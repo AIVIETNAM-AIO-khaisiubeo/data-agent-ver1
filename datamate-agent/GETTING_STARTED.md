@@ -165,3 +165,57 @@ Inspect `scripts/run.py` and `datamate/agent.py` before changing inference behav
 - [Data Layout](docs/DATA_LAYOUT.md) — expected split and business-file structure.
 - [Evaluation Results](docs/RESULTS.md) — measured results, error analysis, and reproduction notes.
 - [Research References](docs/REFERENCES.md) — bibliography for the design citations.
+
+## 10. PA-focused validation (2026-10-31)
+
+The PA metric rewards correct answers (+1), penalizes incorrect ones (-1), and
+gives zero for `abstain`. A rule of thumb is to answer only when the estimated
+probability of being correct is above 0.5 **after calibration on held-out
+training businesses**. The default `decision.min_template_strength=0.45` is
+a conservative starting point, *not an empirically optimized number*.
+
+This branch adds three inference safeguards:
+
+1. SQL samples from one prompt do not count as independent confirmation.
+   When no deterministic result supports the answer, a second agent family
+   (plan-to-SQL, Python, or independent SQL model) must agree to early-exit.
+2. Scalar answer types must come from one result row. Numeric outputs must
+   also have an unambiguous numeric column; otherwise the execution-feedback
+   repair path receives a format failure.
+3. Low-strength template-only answers abstain rather than relying on the
+   uniform offline prior. An unsupported LLM-only `unanswerable` answer
+   requires independent confirmation or positive deterministic evidence.
+
+### Train-only grouped PA threshold study
+
+From `datamate-agent/`, create an *unfiltered candidate dump* on the
+official labeled **train** split. The dump contains raw `pred` candidates,
+features and business IDs, not test answers:
+
+```bash
+mkdir -p runs
+python scripts/run.py --data /path/to/train --out runs/train.jsonl \
+  --dump runs/train_dump.jsonl --set llm.backend=none
+
+python scripts/sweep_policy.py runs/train_dump.jsonl \
+  /path/to/train/answers.jsonl --folds 5 \
+  --out runs/train_business_grouped_pa.json
+```
+
+For a quick CPU-only candidate dump, `eval_templates.py --out` is also
+supported. `sweep_policy.py` tunes the template-strength gate **inside
+training folds** and measures it on *other* businesses, then reports the
+median selected threshold. Re-test after changing the agent: grouped threshold
+selection alone does not remove earlier template-development leakage.
+
+The grouped PA report compares unfiltered candidates, the new default
+threshold, and a train-only fold-selected threshold. It never inspects
+public/private reference answers. Set `--set decision.min_template_strength=X`
+after inspecting train-held-out behavior. Keep the official public-test
+leaderboard for occasional verification only, not as a training target.
+
+**Run the regression suite:** `python -m pytest -q tests`. A complete
+LLM-enabled validation additionally needs an offline Qwen3-14B checkpoint,
+a compatible GPU/vLLM stack, and freshly fitted calibration traces from
+that same inference configuration. A local template-only run cannot establish
+the accuracy of the LLM-enabled agent.
