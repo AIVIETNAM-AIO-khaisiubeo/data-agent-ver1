@@ -167,7 +167,14 @@ On `feature/inventory-support`, the updated agent now requires independent
 generator-family confirmation before early exit without a supporting
 template, escalates through additional agent families only as needed, rejects
 ambiguous scalar query results, guards unsupported `unanswerable` guesses,
-and offers a configurable (now disabled-by-default) weak-template gate.\nThe previous default strength threshold 0.45 caused a measured TRAIN regression\n(PA 0.825; 2,475 correct / 0 wrong / 525 abstain) by filtering too many\nvalid predictions, so the default was restored to 0.0.\n\nSaved candidate traces can now be replayed across thresholds without repeating\ninference using `scripts/sweep_policy.py`; residual TRAIN abstentions can be\nclassified using `scripts/diagnose_train.py`.
+and offers a configurable (now disabled-by-default) weak-template gate.
+The previous default strength threshold 0.45 caused a measured TRAIN regression
+(PA 0.825; 2,475 correct / 0 wrong / 525 abstain) by filtering too many
+valid predictions, so the default was restored to 0.0.
+
+Saved candidate traces can now be replayed across thresholds without repeating
+inference using `scripts/sweep_policy.py`; residual TRAIN abstentions can be
+classified using `scripts/diagnose_train.py`.
 
 To evaluate and tune PA on **labeled train only**, see
 [Getting Started: PA-focused validation](datamate-agent/GETTING_STARTED.md#10-pa-focused-validation-2026-10-31).
